@@ -11,9 +11,10 @@ if (!TOKEN) {
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-// Xotirada saqlash (Key: "chatId:messageId")
+// Xotirada saqlash
 const userStates = new Map();
-const replyMap = new Map(); 
+const replyMap = new Map(); // { "targetChatId:sentMessageId": originalSenderChatId }
+const messageLinker = new Map(); // { "senderChatId:originalMessageId": targetMessageIdInTargetChat }
 
 const TEXTS = {
   welcome: (name, link) => 
@@ -29,6 +30,7 @@ const TEXTS = {
   sentSuccess: `✅ <b>Yuborildi!</b>\n\nSizning anonim xabaringiz o'z egasiga yetkazildi.`,
   
   receivedHeader: `💎 <b>Sizda yangi anonim xabar!</b>\n\n`,
+  replyHeader: `💬 <b>Sizda yangi anonim javob!</b>\n\n`,
   
   replyHint: `\n\n<i>Javob berish uchun suring.</i>`
 };
@@ -48,26 +50,39 @@ bot.on('message', async (msg) => {
     return bot.sendMessage(chatId, TEXTS.welcome(msg.from.first_name, myLink), { parse_mode: 'HTML' });
   }
 
-  // 2. Reply (Surish orqali javob berish) - Uzoq suhbatlar uchun
+  // 2. Reply (Surish orqali javob berish)
   if (msg.reply_to_message) {
     const key = `${chatId}:${msg.reply_to_message.message_id}`;
     const targetUserId = replyMap.get(key);
     
     if (targetUserId) {
       try {
-        // Xabarni nusxalash
-        const sent = await bot.copyMessage(targetUserId, chatId, msg.message_id, {
-          caption: `<b>💬 Sizga anonim javob keldi:</b>\n\n` + (msg.caption || ''),
-          parse_mode: 'HTML'
-        });
+        // Qaysi xabarga reply qilinganini topish (Vizual reply uchun)
+        const targetReplyToId = messageLinker.get(`${targetUserId}:${msg.reply_to_message.message_id}`);
 
-        // MUHIM: Uzoq suhbat uchun yangi xabar ID-sini ham xaritaga qo'shamiz
-        // Endi u odam ham bu javobga reply qila oladi
+        let sent;
+        const options = {
+          reply_to_message_id: targetReplyToId,
+          parse_mode: 'HTML'
+        };
+
+        if (msg.text) {
+          sent = await bot.sendMessage(targetUserId, TEXTS.replyHeader + msg.text + TEXTS.replyHint, options);
+        } else {
+          sent = await bot.copyMessage(targetUserId, chatId, msg.message_id, {
+            ...options,
+            caption: TEXTS.replyHeader + (msg.caption || '') + TEXTS.replyHint,
+          });
+        }
+
+        // Keyingi javoblar uchun bog'lanishlarni saqlash
         replyMap.set(`${targetUserId}:${sent.message_id}`, chatId);
+        messageLinker.set(`${chatId}:${sent.message_id}`, msg.reply_to_message.message_id);
 
         return bot.sendMessage(chatId, `✅ Javobingiz yuborildi.`);
       } catch (e) {
-        return bot.sendMessage(chatId, `❌ Xabarni yuborib bo'lmadi (Bloklangan bo'lishi mumkin).`);
+        console.error(e);
+        return bot.sendMessage(chatId, `❌ Xabarni yuborib bo'lmadi.`);
       }
     } else {
         return bot.sendMessage(chatId, `ℹ️ Kechirasiz, ushbu xabarga javob berish muddati tugagan.`);
@@ -80,17 +95,21 @@ bot.on('message', async (msg) => {
     const targetId = state.targetId;
     try {
       let sent;
+      const options = { parse_mode: 'HTML' };
+
       if (msg.text) {
-        sent = await bot.sendMessage(targetId, TEXTS.receivedHeader + msg.text + TEXTS.replyHint, { parse_mode: 'HTML' });
+        sent = await bot.sendMessage(targetId, TEXTS.receivedHeader + msg.text + TEXTS.replyHint, options);
       } else {
         sent = await bot.copyMessage(targetId, chatId, msg.message_id, {
+            ...options,
             caption: TEXTS.receivedHeader + (msg.caption || '') + TEXTS.replyHint,
-            parse_mode: 'HTML'
         });
       }
 
-      // Xabar tizimda saqlanadi, u odam javob yo'llashi uchun
+      // Javob qaytarish tizimi uchun saqlash
       replyMap.set(`${targetId}:${sent.message_id}`, chatId);
+      // Bu yerda messageLinker ga xabarni o'zaro bog'liqligini qo'shamiz (reply ko'rinishi uchun)
+      messageLinker.set(`${chatId}:${sent.message_id}`, msg.message_id);
 
       userStates.delete(chatId);
       return bot.sendMessage(chatId, TEXTS.sentSuccess, { parse_mode: 'HTML' });
@@ -99,12 +118,12 @@ bot.on('message', async (msg) => {
     }
   }
 
-  // Hech qanday amal bo'lmasa yordamchi matn
+  // Yordamchi matn
   if (!text.startsWith('/') && !msg.reply_to_message) {
     bot.sendMessage(chatId, `ℹ️ O'z havolangizni olish uchun /start bosing.\nAnonim xabar yuborish uchun do'stingizning havolasiga bosing.`);
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('m27_Anonimbot logic fixed! 🎭'));
+app.get('/', (req, res) => res.send('m27_Anonimbot: Visual Reply Active! 🎭'));
 app.listen(PORT, () => console.log(`Server: ${PORT}`));
