@@ -97,6 +97,21 @@ function hasProfanity(text) {
   return regex.test(text);
 }
 
+// Xush kelibsiz xabarini yuborish funksiyasi
+async function sendWelcomeMessage(chatId, firstName) {
+  const myLink = `https://t.me/m27_AnonimBot?start=${chatId}`;
+  const options = {
+    parse_mode: 'HTML',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "📤 Havolani ulashish", url: `https://t.me/share/url?url=${encodeURIComponent(myLink)}&text=${encodeURIComponent("Men bilan anonim gaplashish uchun bosing!")}` }],
+        [{ text: "❓ Yordam", callback_data: "help_info" }]
+      ]
+    }
+  };
+  return bot.sendMessage(chatId, TEXTS.welcome(firstName, myLink), options);
+}
+
 // Obunani tekshirish funksiyasi
 async function isSubscribed(userId) {
   try {
@@ -188,17 +203,8 @@ bot.on('message', async (msg) => {
       });
     }
 
-    const myLink = `https://t.me/m27_AnonimBot?start=${chatId}`;
-    const options = {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "📤 Havolani ulashish", url: `https://t.me/share/url?url=${encodeURIComponent(myLink)}&text=${encodeURIComponent("Men bilan anonim gaplashish uchun bosing!")}` }],
-          [{ text: "❓ Yordam", callback_data: "help_info" }]
-        ]
-      }
-    };
-    return bot.sendMessage(chatId, TEXTS.welcome(msg.from.first_name, myLink), options);
+    // O'ziga start bossa - Link berish (faqat obuna bo'lgan bo'lsa)
+    return sendWelcomeMessage(chatId, msg.from.first_name);
   }
 
   // 2. Admin buyruqlari
@@ -414,8 +420,9 @@ bot.on('callback_query', async (query) => {
   } else if (data === "check_sub") {
     const subscribed = await isSubscribed(chatId);
     if (subscribed) {
-        bot.deleteMessage(chatId, query.message.message_id);
-        bot.sendMessage(chatId, "✅ Rahmat! Endi botdan to'liq foydalanishingiz mumkin. /start bosing.");
+        await bot.deleteMessage(chatId, query.message.message_id);
+        await bot.sendMessage(chatId, "✅ Tabriklaymiz! Obuna tasdiqlandi.");
+        return sendWelcomeMessage(chatId, query.from.first_name);
     } else {
         bot.answerCallbackQuery(query.id, { text: "⚠️ Siz hali kanalga a'zo emassiz!", show_alert: true });
     }
