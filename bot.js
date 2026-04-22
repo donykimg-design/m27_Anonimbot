@@ -15,9 +15,6 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-// ============================================================
-//  🌀 MONGODB ULANISH VA SCHEMALAR
-// ============================================================
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB bazasiga ulandi!'))
   .catch((err) => console.error('❌ MongoDB xatosi:', err));
@@ -32,7 +29,7 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 const MsgMapSchema = new mongoose.Schema({
-  key: { type: String, unique: true }, // "chatId:messageId"
+  key: { type: String, unique: true },
   targetId: String,
   targetMsgId: String
 });
@@ -47,34 +44,10 @@ const State = mongoose.model('State', StateSchema);
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-// ============================================================
-//  🚀 KEEP ALIVE - SELF PING
-// ============================================================
 const RENDER_URL = `https://m27-anonimbot.onrender.com`;
 setInterval(async () => {
   try { await axios.get(RENDER_URL); } catch (e) {}
 }, 10 * 60 * 1000);
-
-// ============================================================
-//  📜 MIGRATSIYA (ESKI BAZADAN KO'CHIRISH)
-// ============================================================
-async function migrateIfNeeded() {
-  const DB_PATH = path.join(__dirname, 'database.json');
-  if (fs.existsSync(DB_PATH)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-      if (data.users) {
-        for (const uid in data.users) {
-          const u = data.users[uid];
-          await User.findOneAndUpdate({ id: u.id }, u, { upsert: true });
-        }
-      }
-      console.log('✅ Migratsiya muvaffaqiyatli yakunlandi!');
-      fs.unlinkSync(DB_PATH); // Eski faylni o'chirib yuboramiz
-    } catch (e) { console.error('Migratsiyada xato:', e); }
-  }
-}
-migrateIfNeeded();
 
 const ADMIN_ID = '6756534512'; 
 const CHANNEL_ID = '@m27_Anonim'; 
@@ -133,11 +106,7 @@ bot.on('message', async (msg) => {
   if (text === '/myid') return bot.sendMessage(chatId, `ID: <code>${chatId}</code>`, { parse_mode: 'HTML' });
 
   if (text.startsWith('/start')) {
-    await User.findOneAndUpdate(
-        { id: chatId }, 
-        { id: chatId, name: msg.from.first_name, username: msg.from.username }, 
-        { upsert: true }
-    );
+    await User.findOneAndUpdate({ id: chatId }, { id: chatId, name: msg.from.first_name, username: msg.from.username }, { upsert: true });
     
     if (!(await isSubscribed(chatId))) {
       return bot.sendMessage(chatId, "⚠️ <b>Kanalga a'zo bo'ling!</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "📢 Kanal", url: "https://t.me/m27_Anonim" }], [{ text: "✅ Tekshirish", callback_data: "check_sub" }]] } });
@@ -149,23 +118,17 @@ bot.on('message', async (msg) => {
       return bot.sendMessage(chatId, "✍️ <b>Xabaringizni yozing...</b>", { parse_mode: 'HTML' });
     }
 
-    let welcomeText = `👋 Salom <b>${msg.from.first_name}</b>!\n\n` +
-                      `Bu @m27_AnonimBot — mutlaqo anonim xabarlar botidir.\n\n` +
-                      `🔗 <b>Sizning havolangiz:</b>\n<code>${myLink}</code>\n\n` +
-                      `👆 Ushbu havolani ulashing.`;
-
     if (chatId === ADMIN_ID) {
-      welcomeText = `👋 <b>Admin paneli:</b>\n\n` + welcomeText;
+      const welcomeText = `👋 <b>Admin paneli:</b>\n\n` +
+                    `🌐 <b>Sizning havolangiz:</b>\n<code>${myLink}</code>\n\n` +
+                    `👆 Ushbu havolani ulashing.`;
       return bot.sendMessage(chatId, welcomeText, { 
         parse_mode: 'HTML', 
-        reply_markup: { 
-            keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], 
-            resize_keyboard: true 
-        } 
+        reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], resize_keyboard: true } 
       });
     }
 
-    return bot.sendMessage(chatId, welcomeText, { 
+    return bot.sendMessage(chatId, `👋 Salom <b>${msg.from.first_name}</b>!\n\n🔗 Havolangiz:\n<code>${myLink}</code>`, { 
         parse_mode: 'HTML', 
         reply_markup: { inline_keyboard: [[{ text: "📤 Ulashish", url: `https://t.me/share/url?url=${encodeURIComponent(myLink)}` }]] } 
     });
@@ -179,13 +142,13 @@ bot.on('message', async (msg) => {
     }
     if (text === '📢 Xabar yuborish') {
       await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'broadcast' }, { upsert: true });
-      return bot.sendMessage(chatId, "📢 <b>Xabarni yozing.</b>");
+      return bot.sendMessage(chatId, "📢 <b>Xabarni yozing:</b>", { parse_mode: 'HTML' });
     }
     if (text === '👤 Foydalanuvchilar') {
-      const users = await User.find().limit(50);
+      const users = await User.find();
       if (users.length === 0) return bot.sendMessage(chatId, "Baza bo'sh.");
       const buttons = users.map(u => [{ text: `👤 ${u.name}`, callback_data: `view_user:${u.id}` }]);
-      return bot.sendMessage(chatId, "👥 <b>Foydalanuvchilar (Oxirgi 50 ta):</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+      return bot.sendMessage(chatId, "👥 <b>Bot foydalanuvchilari:</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
     }
     if (text === '🚫 Bloklar') {
        const blockedUsers = await User.find({ "blocked.0": { $exists: true } });
@@ -203,9 +166,7 @@ bot.on('message', async (msg) => {
       try {
         const opt = { reply_to_message_id: map.targetMsgId, parse_mode: 'HTML' };
         let sent = msg.text ? await bot.sendMessage(map.targetId, `💬 <b>Yangi javob!</b>\n\n${msg.text}\n\n<i>Javob uchun suring.</i>`, opt) : await bot.copyMessage(map.targetId, chatId, msg.message_id, { ...opt, caption: `💬 <b>Yangi javob!</b>` });
-        
         await MsgMap.create({ key: `${map.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.reply_to_message.message_id.toString() });
-        
         logToAdmin(msg.from, map.targetId, msg, true);
         return bot.sendMessage(chatId, "✅ Yuborildi.");
       } catch (e) { return bot.sendMessage(chatId, "❌ Xato."); }
@@ -227,9 +188,7 @@ bot.on('message', async (msg) => {
       try {
         const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🚫 Bloklash", callback_data: `block_user:${chatId}` }, { text: "💬 Javob", callback_data: `reply_to:${chatId}` }]] } };
         let sent = msg.text ? await bot.sendMessage(state.targetId, `💎 <b>Yangi anonim xabar!</b>\n\n${msg.text}\n\n<i>Javob uchun suring.</i>`, opt) : await bot.copyMessage(state.targetId, chatId, msg.message_id, { ...opt, caption: `💎 <b>Yangi anonim xabar!</b>` });
-        
         await MsgMap.create({ key: `${state.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.message_id.toString() });
-        
         await State.deleteOne({ id: chatId });
         logToAdmin(msg.from, state.targetId, msg, false);
         return bot.sendMessage(chatId, "✅ Yuborildi.");
