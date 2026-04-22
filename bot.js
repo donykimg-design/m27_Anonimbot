@@ -202,7 +202,7 @@ bot.on('message', async (msg) => {
         db.messageLinker[`${chatId}:${sent.message_id}`] = msg.reply_to_message.message_id;
         saveDB(db);
         logToAdmin(msg.from, targetUserId, msg, true);
-        return bot.sendMessage(chatId, "✅ Javob yuborildi.");
+        return bot.sendMessage(chatId, "✅ Javob yuborildi.", { parse_mode: 'HTML' });
       } catch (e) { return bot.sendMessage(chatId, "❌ Xato."); }
     }
   }
@@ -227,7 +227,7 @@ bot.on('message', async (msg) => {
         delete db.userStates[chatId];
         saveDB(db);
         logToAdmin(msg.from, targetId, msg, false);
-        return bot.sendMessage(chatId, TEXTS.sentSuccess);
+        return bot.sendMessage(chatId, TEXTS.sentSuccess, { parse_mode: 'HTML' });
       } catch (e) { return bot.sendMessage(chatId, "❌ Xato."); }
     }
   }
