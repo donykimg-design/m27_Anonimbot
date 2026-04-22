@@ -214,8 +214,8 @@ bot.on('message', async (msg) => {
         await bot.sendMessage(chatId, "👋 Salom Admin! Panelimizga xush kelibsiz.", {
             reply_markup: {
                 keyboard: [
-                    ['📊 Statistika', '📢 Xabar yuborish'],
-                    ['🚫 Bloklarni ko'rish', '❓ Yordam']
+                    ["📊 Statistika", "📢 Xabar yuborish"],
+                    ["🚫 Bloklarni ko'rish", "❓ Yordam"]
                 ],
                 resize_keyboard: true
             }
