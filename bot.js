@@ -398,7 +398,7 @@ bot.on('message', async (msg) => {
 });
 
 // Inline tugmalar bilan ishlash
-bot.on('callback_query', (query) => {
+bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id.toString();
   const data = query.data;
 
