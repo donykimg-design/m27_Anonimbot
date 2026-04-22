@@ -175,7 +175,7 @@ bot.on('callback_query', async (q) => {
   } else if (d.startsWith("view_user:")) {
     const u = db.users[d.split(":")[1]];
     if (u) {
-        const date = new Date(u.joinedAt).toLocaleString('uz-UZ', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).replace(',', '');
+        const date = new Date(u.joinedAt).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).replace(',', '');
         bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${u.name}\n🌐 @${u.username || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } });
     }
   } else if (d.startsWith("block_user:")) {
