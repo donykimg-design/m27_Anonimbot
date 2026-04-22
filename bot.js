@@ -14,65 +14,25 @@ if (!TOKEN) {
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-// ============================================================
-//  🚀 KEEP ALIVE - SELF PING
-// ============================================================
 const RENDER_URL = `https://m27-anonimbot.onrender.com`;
-
 setInterval(async () => {
-  try {
-    await axios.get(RENDER_URL);
-    console.log('✅ Bot uyg`oq saqlanmoqda...');
-  } catch (e) {
-    console.log('⚠️ Ping yuborishda xato.');
-  }
+  try { await axios.get(RENDER_URL); } catch (e) {}
 }, 10 * 60 * 1000);
 
-// ============================================================
-//  📦 DATABASE TIZIMI
-// ============================================================
 const DB_PATH = path.join(__dirname, 'database.json');
-
 function loadDB() {
   if (!fs.existsSync(DB_PATH)) return { userStates: {}, replyMap: {}, messageLinker: {}, users: {}, logs: [] };
   try {
     const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
     if (!data.users) data.users = {};
     return data;
-  } catch (e) {
-    return { userStates: {}, replyMap: {}, messageLinker: {}, users: {}, logs: [] };
-  }
+  } catch (e) { return { userStates: {}, replyMap: {}, messageLinker: {}, users: {}, logs: [] }; }
 }
-
 function saveDB(data) {
-  try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error('Saqlashda xato:', e);
-  }
+  try { fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2)); } catch (e) {}
 }
 
 let db = loadDB();
-
-const TEXTS = {
-  welcome: (name, link) => 
-    `👋 Salom, <b>${name}</b>!\n\n` +
-    `Bu 🎭 <b>@m27_AnonimBot</b> — mutlaqo anonim xabarlar botidir.\n\n` +
-    `🔗 <b>Sizning havolangiz:</b>\n` +
-    `<code>${link}</code>\n\n` +
-    `👆 Ushbu havolani Instagram yoki Telegram'ga joylang.`,
-  
-  anonymousPrompt: `✍️ <b>Xabaringizni yuboring...</b>\n\nSiz hozir mutlaqo anonim tarzda yozayapsiz.`,
-  sentSuccess: `✅ <b>Yuborildi!</b>\n\nSizning xabaringiz o'z egasiga yetkazildi.`,
-  notSubscribed: `⚠️ <b>Kechirasiz!</b>\n\nBotdan foydalanish uchun kanalimizga a'zo bo'lishingiz kerak.`,
-  profanityError: `🚫 <b>Xato!</b>\n\nXabarda haqoratli so'zlar borligi uchun yuborilmadi.`,
-  blockedMessage: `⚠️ <b>Xabar yuborilmadi!</b>\n\nSiz bloklangansiz.`,
-  receivedHeader: `💎 <b>Sizda yangi anonim xabar!</b>\n\n`,
-  replyHeader: `💬 <b>Sizda yangi anonim javob!</b>\n\n`,
-  replyHint: `\n\n<i>Javob berish uchun xabarni chapga suring.</i>`,
-  stats: (users, msgs) => `📊 <b>Statistika:</b>\n\n👤 Foydalanuvchilar: ${users}\n✉️ Xabarlar: ${msgs}`,
-  broadcastPrompt: `📢 <b>Broadcasting:</b> Xabaringizni yozing.`
-};
 
 const ADMIN_ID = '6756534512'; 
 const CHANNEL_ID = '@m27_Anonim'; 
@@ -80,18 +40,7 @@ const BAD_WORDS = ['jalap', 'qanjiq', 'itdan tarqagan', 'skay', 'am', 'kot', 'sh
 
 function hasProfanity(text) {
   if (!text) return false;
-  const regex = new RegExp(BAD_WORDS.join('|'), 'gi');
-  return regex.test(text);
-}
-
-async function sendWelcomeMessage(chatId, firstName) {
-  const myLink = `https://t.me/m27_AnonimBot?start=${chatId}`;
-  return bot.sendMessage(chatId, TEXTS.welcome(firstName, myLink), {
-    parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [[{ text: "📤 Havolani ulashish", url: `https://t.me/share/url?url=${encodeURIComponent(myLink)}` }]]
-    }
-  });
+  return new RegExp(BAD_WORDS.join('|'), 'gi').test(text);
 }
 
 async function isSubscribed(userId) {
@@ -104,10 +53,28 @@ async function isSubscribed(userId) {
 async function logToAdmin(sender, receiverId, message, isReply = false) {
   if (!ADMIN_ID) return;
   const receiver = db.users[receiverId] || { name: 'Noma`lum', id: receiverId };
-  const logHeader = `📡 <b>LOG</b>\n👤 <a href="tg://user?id=${sender.id}">${sender.first_name}</a> -> 🎯 <a href="tg://user?id=${receiver.id}">${receiver.name}</a>\n\n`;
+  const typeText = isReply ? "💬 Yangi javob!" : "✍️ Yangi anonim xabar!";
+  
+  const logText = `📣 <b>${typeText}</b>\n\n` +
+            `🆔 <b>ID:</b> <code>${sender.id}</code>\n` +
+            `👤 <b>Ismi:</b> ${sender.first_name}\n` +
+            `🌐 <b>Username:</b> ${sender.username ? '@'+sender.username : 'Mavjud emas'}\n\n` +
+            `🎯 <b>Kimga:</b> ${receiver.name} (ID: ${receiver.id})\n` +
+            `📝 <b>Xabar:</b> ${message.text || '[Media]'}`;
+
+  const opt = { 
+    parse_mode: 'HTML', 
+    reply_markup: { 
+      inline_keyboard: [
+        [{ text: "🔗 Akkauntga kirish", url: `tg://user?id=${sender.id}` }],
+        [{ text: "💬 Javob berish", callback_data: `reply_to:${sender.id}` }]
+      ]
+    }
+  };
+
   try {
-    if (message.text) await bot.sendMessage(ADMIN_ID, logHeader + message.text, { parse_mode: 'HTML' });
-    else await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, { caption: logHeader, parse_mode: 'HTML' });
+    if (message.text) await bot.sendMessage(ADMIN_ID, logText, opt);
+    else await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, { ...opt, caption: logText });
   } catch (e) {}
 }
 
@@ -118,79 +85,72 @@ bot.on('message', async (msg) => {
   if (text === '/myid') return bot.sendMessage(chatId, `ID: <code>${chatId}</code>`, { parse_mode: 'HTML' });
 
   if (text.startsWith('/start')) {
-    if (!db.users[chatId]) {
-      db.users[chatId] = { id: chatId, name: msg.from.first_name, joinedAt: new Date().toISOString() };
-      saveDB(db);
-    }
-    const sub = await isSubscribed(chatId);
-    if (!sub) {
-      return bot.sendMessage(chatId, TEXTS.notSubscribed, {
+    db.users[chatId] = { id: chatId, name: msg.from.first_name, username: msg.from.username, joinedAt: new Date().toISOString() };
+    saveDB(db);
+    
+    if (!(await isSubscribed(chatId))) {
+      return bot.sendMessage(chatId, "⚠️ <b>Botdan foydalanish uchun kanalga a'zo bo'ling!</b>", {
         parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [[{ text: "📢 Kanal", url: "https://t.me/m27_Anonim" }], [{ text: "✅ Tekshirish", callback_data: "check_sub" }]]
-        }
+        reply_markup: { inline_keyboard: [[{ text: "📢 Kanal", url: "https://t.me/m27_Anonim" }], [{ text: "✅ Tekshirish", callback_data: "check_sub" }]] }
       });
     }
+
     if (chatId === ADMIN_ID) {
-      await bot.sendMessage(chatId, "👋 Admin paneli:", {
+      return bot.sendMessage(chatId, "👋 <b>Admin paneli:</b>", {
         reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], resize_keyboard: true }
       });
     }
+
     const startParam = text.split(' ')[1];
     if (startParam && startParam !== chatId) {
       db.userStates[chatId] = { targetId: startParam };
       saveDB(db);
-      return bot.sendMessage(chatId, TEXTS.anonymousPrompt, { parse_mode: 'HTML' });
+      return bot.sendMessage(chatId, "✍️ <b>Xabaringizni yozing...</b>", { parse_mode: 'HTML' });
     }
-    return sendWelcomeMessage(chatId, msg.from.first_name);
+
+    const myLink = `https://t.me/m27_AnonimBot?start=${chatId}`;
+    return bot.sendMessage(chatId, `👋 Salom <b>${msg.from.first_name}</b>!\n\n🔗 Havolangiz:\n<code>${myLink}</code>`, {
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: [[{ text: "📤 Ulashish", url: `https://t.me/share/url?url=${encodeURIComponent(myLink)}` }]] }
+    });
   }
 
   if (chatId === ADMIN_ID) {
-    if (text === '📊 Statistika') return bot.sendMessage(chatId, TEXTS.stats(Object.keys(db.users).length, Object.keys(db.replyMap).length), { parse_mode: 'HTML' });
+    if (text === '📊 Statistika') return bot.sendMessage(chatId, `📊 <b>Statistika:</b>\n\n👤 Foydalanuvchilar: ${Object.keys(db.users).length}\n✉️ Xabarlar: ${Object.keys(db.replyMap).length}`, { parse_mode: 'HTML' });
     if (text === '📢 Xabar yuborish') {
       db.userStates[chatId] = { adminAction: 'broadcast' };
       saveDB(db);
-      return bot.sendMessage(chatId, TEXTS.broadcastPrompt);
+      return bot.sendMessage(chatId, "📢 <b>Broadcasting:</b> Xabarni yozing.");
     }
     if (text === '👤 Foydalanuvchilar') {
-      let users = Object.values(db.users);
-      let list = `👤 <b>Foydalanuvchilar: ${users.length}</b>\n\n`;
-      users.forEach((u, i) => {
-        list += `${i+1}. <a href="tg://user?id=${u.id}">${u.name}</a> (ID: <code>${u.id}</code>)\n`;
-      });
-      return bot.sendMessage(chatId, list || "Bazada odam yo'q.", { parse_mode: 'HTML' });
+      const users = Object.values(db.users);
+      if (users.length === 0) return bot.sendMessage(chatId, "Bazada foydalanuvchilar yo'q.");
+      const buttons = users.map(u => [{ text: `👤 ${u.name}`, callback_data: `view_user:${u.id}` }]);
+      return bot.sendMessage(chatId, "👥 <b>Bot foydalanuvchilari:</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
     }
     if (text === '🚫 Bloklar') {
-      let list = "🚫 <b>Bloklanganlar ro'yxati:</b>\n\n";
+      let list = "🚫 <b>Bloklar:</b>\n\n";
       Object.keys(db.users).forEach(uid => {
-        const u = db.users[uid];
-        if (u.blocked && u.blocked.length > 0) {
-          list += `👤 <a href="tg://user?id=${u.id}">${u.name}</a> quyidagilarni bloklagan:\n`;
-          u.blocked.forEach(bid => {
-            const bu = db.users[bid] || { name: bid };
-            list += `   └─ 🎯 <a href="tg://user?id=${bid}">${bu.name}</a>\n`;
-          });
-          list += "\n";
-        }
+        if (db.users[uid].blocked) list += `👤 ${db.users[uid].name} bloklaganlar: ${db.users[uid].blocked.length} ta\n`;
       });
-      return bot.sendMessage(chatId, list || "Hali hech kim bloklanmagan.", { parse_mode: 'HTML' });
+      return bot.sendMessage(chatId, list || "Bloklar yo'q.", { parse_mode: 'HTML' });
     }
   }
 
-  if (chatId !== ADMIN_ID && hasProfanity(text)) return bot.sendMessage(chatId, TEXTS.profanityError, { parse_mode: 'HTML' });
+  if (chatId !== ADMIN_ID && hasProfanity(text)) return bot.sendMessage(chatId, "🚫 So'kinmang!", { parse_mode: 'HTML' });
 
   if (msg.reply_to_message) {
     const targetUserId = db.replyMap[`${chatId}:${msg.reply_to_message.message_id}`];
     if (targetUserId) {
       try {
         const targetReplyToId = db.messageLinker[`${targetUserId}:${msg.reply_to_message.message_id}`];
-        const options = { reply_to_message_id: targetReplyToId, parse_mode: 'HTML' };
-        let sent = msg.text ? await bot.sendMessage(targetUserId, TEXTS.replyHeader + msg.text + TEXTS.replyHint, options) : await bot.copyMessage(targetUserId, chatId, msg.message_id, { ...options, caption: TEXTS.replyHeader + TEXTS.replyHint });
+        const opt = { reply_to_message_id: targetReplyToId, parse_mode: 'HTML' };
+        let sent = msg.text ? await bot.sendMessage(targetUserId, `💬 <b>Yangi javob!</b>\n\n${msg.text}\n\n<i>Javob uchun suring.</i>`, opt) : await bot.copyMessage(targetUserId, chatId, msg.message_id, { ...opt, caption: `💬 <b>Yangi javob!</b>` });
         db.replyMap[`${targetUserId}:${sent.message_id}`] = chatId;
         db.messageLinker[`${chatId}:${sent.message_id}`] = msg.reply_to_message.message_id;
         saveDB(db);
         logToAdmin(msg.from, targetUserId, msg, true);
-        return bot.sendMessage(chatId, "✅ Javob yuborildi.", { parse_mode: 'HTML' });
+        return bot.sendMessage(chatId, "✅ Yuborildi.");
       } catch (e) { return bot.sendMessage(chatId, "❌ Xato."); }
     }
   }
@@ -200,26 +160,24 @@ bot.on('message', async (msg) => {
     if (state.adminAction === 'broadcast' && chatId === ADMIN_ID) {
       const users = Object.keys(db.users);
       let count = 0;
-      for (const u of users) {
-        try { if (u !== ADMIN_ID) { await bot.copyMessage(u, chatId, msg.message_id); count++; } } catch (e) {}
-      }
+      for (const u of users) { try { if (u !== ADMIN_ID) { await bot.copyMessage(u, chatId, msg.message_id); count++; } } catch (e) {} }
       delete db.userStates[chatId];
       saveDB(db);
-      return bot.sendMessage(chatId, `✅ Xabar ${count} ta foydalanuvchiga muvaffaqiyatli yuborildi.`);
+      return bot.sendMessage(chatId, `✅ Xabar ${count} kishiga yuborildi.`);
     }
     if (state.targetId) {
       const targetId = state.targetId;
-      if (db.users[targetId]?.blocked?.includes(chatId)) return bot.sendMessage(chatId, TEXTS.blockedMessage);
+      if (db.users[targetId]?.blocked?.includes(chatId)) return bot.sendMessage(chatId, "⚠️ Siz bloklangansiz.");
       try {
         const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🚫 Bloklash", callback_data: `block_user:${chatId}` }, { text: "💬 Javob berish", callback_data: `reply_to:${chatId}` }]] } };
-        let sent = msg.text ? await bot.sendMessage(targetId, TEXTS.receivedHeader + msg.text + TEXTS.replyHint, opt) : await bot.copyMessage(targetId, chatId, msg.message_id, { ...opt, caption: TEXTS.receivedHeader + TEXTS.replyHint });
+        let sent = msg.text ? await bot.sendMessage(targetId, `💎 <b>Yangi anonim xabar!</b>\n\n${msg.text}\n\n<i>Javob uchun suring.</i>`, opt) : await bot.copyMessage(targetId, chatId, msg.message_id, { ...opt, caption: `💎 <b>Yangi anonim xabar!</b>` });
         db.replyMap[`${targetId}:${sent.message_id}`] = chatId;
         db.messageLinker[`${chatId}:${sent.message_id}`] = msg.message_id;
         delete db.userStates[chatId];
         saveDB(db);
         logToAdmin(msg.from, targetId, msg, false);
-        return bot.sendMessage(chatId, TEXTS.sentSuccess, { parse_mode: 'HTML' });
-      } catch (e) { return bot.sendMessage(chatId, "❌ Xato."); }
+        return bot.sendMessage(chatId, "✅ Yuborildi.");
+      } catch (e) { return bot.sendMessage(chatId, "❌ Xatolik."); }
     }
   }
 });
@@ -229,8 +187,22 @@ bot.on('callback_query', async (query) => {
   const data = query.data;
   if (data === "check_sub") {
     if (await isSubscribed(chatId)) {
-      await bot.deleteMessage(chatId, query.message.message_id);
-      return sendWelcomeMessage(chatId, query.from.first_name);
+        await bot.deleteMessage(chatId, query.message.message_id);
+        return bot.sendMessage(chatId, "✅ Tasdiqlandi! /start bosing.");
+    }
+  } else if (data.startsWith("view_user:")) {
+    const uId = data.split(":")[1];
+    const u = db.users[uId];
+    if (u) {
+        const info = `👤 <b>Foydalanuvchi ma'lumotlari:</b>\n\n` +
+                     `🆔 <b>ID:</b> <code>${u.id}</code>\n` +
+                     `👤 <b>Ism:</b> ${u.name}\n` +
+                     `🌐 <b>Username:</b> ${u.username ? '@'+u.username : 'Mavjud emas'}\n` +
+                     `📅 <b>Qo'shilgan vaqti:</b> ${new Date(u.joinedAt).toLocaleString()}`;
+        bot.sendMessage(chatId, info, { 
+            parse_mode: 'HTML', 
+            reply_markup: { inline_keyboard: [[{ text: "🔗 Profilga kirish", url: `tg://user?id=${u.id}` }]] } 
+        });
     }
   } else if (data.startsWith("block_user:")) {
     const sId = data.split(":")[1];
@@ -241,7 +213,7 @@ bot.on('callback_query', async (query) => {
       bot.answerCallbackQuery(query.id, { text: "Bloklandi" });
     }
   } else if (data.startsWith("reply_to:")) {
-    bot.sendMessage(chatId, "✍️ <b>Javobingizni hoziroq yozing...</b>", { parse_mode: 'HTML', reply_markup: { force_reply: true } });
+    bot.sendMessage(chatId, "✍️ <b>Javobingizni yozing...</b>", { parse_mode: 'HTML', reply_markup: { force_reply: true } });
   }
   bot.answerCallbackQuery(query.id);
 });
