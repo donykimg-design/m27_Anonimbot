@@ -162,6 +162,31 @@ bot.on('message', async (msg) => {
       saveDB(db);
       return bot.sendMessage(chatId, TEXTS.broadcastPrompt);
     }
+    if (text === '🚫 Bloklar') {
+      let list = "🚫 <b>Bloklanganlar ro'yxati:</b>\n\n";
+      Object.keys(db.users).forEach(uid => {
+        const u = db.users[uid];
+        if (u.blocked && u.blocked.length > 0) {
+          list += `👤 <a href="tg://user?id=${u.id}">${u.name}</a> quyidagilarni bloklagan:\n`;
+          u.blocked.forEach(bid => {
+            const bu = db.users[bid] || { name: bid };
+            list += `   └─ 🎯 <a href="tg://user?id=${bid}">${bu.name || bid}</a>\n`;
+          });
+          list += "\n";
+        }
+      });
+      return bot.sendMessage(chatId, list || "Hali hech kim bloklanmagan.", { parse_mode: 'HTML' });
+    }
+    if (text === '❓ Yordam') {
+      const helpText = `🛠 <b>Admin buyruqlari:</b>\n\n` +
+                 `• 📊 <b>Statistika</b> - Botdan foydalanyotganlar soni.\n` +
+                 `• 📢 <b>Xabar yuborish</b> - Hammaga reklama yuborish.\n` +
+                 `• 🚫 <b>Bloklar</b> - Kim kimni bloklaganini ko'rish.\n\n` +
+                 `<b>Qo'shimcha buyruqlar:</b>\n` +
+                 `<code>/force_block ID1 ID2</code> - ID1 ni ID2 uchun bloklash.\n` +
+                 `<code>/force_unblock ID1 ID2</code> - Blokdan chiqarish.`;
+      return bot.sendMessage(chatId, helpText, { parse_mode: 'HTML' });
+    }
   }
 
   if (hasProfanity(text)) return bot.sendMessage(chatId, TEXTS.profanityError, { parse_mode: 'HTML' });
