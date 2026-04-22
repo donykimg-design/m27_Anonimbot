@@ -65,6 +65,7 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id.toString();
   const text = msg.text || '';
+  const myLink = `https://t.me/m27_AnonimBot?start=${chatId}`;
 
   if (text === '/myid') return bot.sendMessage(chatId, `ID: <code>${chatId}</code>`, { parse_mode: 'HTML' });
 
@@ -76,10 +77,6 @@ bot.on('message', async (msg) => {
       return bot.sendMessage(chatId, "⚠️ <b>Kanalga a'zo bo'ling!</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "📢 Kanal", url: "https://t.me/m27_Anonim" }], [{ text: "✅ Tekshirish", callback_data: "check_sub" }]] } });
     }
 
-    if (chatId === ADMIN_ID) {
-      return bot.sendMessage(chatId, "👋 <b>Admin paneli:</b>", { parse_mode: 'HTML', reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], resize_keyboard: true } });
-    }
-
     const startParam = text.split(' ')[1];
     if (startParam && startParam !== chatId) {
       db.userStates[chatId] = { targetId: startParam };
@@ -87,8 +84,27 @@ bot.on('message', async (msg) => {
       return bot.sendMessage(chatId, "✍️ <b>Xabaringizni yozing...</b>", { parse_mode: 'HTML' });
     }
 
-    const myLink = `https://t.me/m27_AnonimBot?start=${chatId}`;
-    return bot.sendMessage(chatId, `👋 Salom <b>${msg.from.first_name}</b>!\n\n🔗 Havolangiz:\n<code>${myLink}</code>`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "📤 Ulashish", url: `https://t.me/share/url?url=${encodeURIComponent(myLink)}` }]] } });
+    // Admin yoki Foydalanuvchi uchun xush kelibsiz xabari
+    let welcomeText = `👋 Salom <b>${msg.from.first_name}</b>!\n\n` +
+                      `Bu @m27_AnonimBot — mutlaqo anonim xabarlar botidir.\n\n` +
+                      `🔗 <b>Sizning havolangiz:</b>\n<code>${myLink}</code>\n\n` +
+                      `👆 Ushbu havolani ulashing.`;
+
+    if (chatId === ADMIN_ID) {
+      welcomeText = `👋 <b>Admin paneli:</b>\n\n` + welcomeText;
+      return bot.sendMessage(chatId, welcomeText, { 
+        parse_mode: 'HTML', 
+        reply_markup: { 
+            keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], 
+            resize_keyboard: true 
+        } 
+      });
+    }
+
+    return bot.sendMessage(chatId, welcomeText, { 
+        parse_mode: 'HTML', 
+        reply_markup: { inline_keyboard: [[{ text: "📤 Ulashish", url: `https://t.me/share/url?url=${encodeURIComponent(myLink)}` }]] } 
+    });
   }
 
   if (chatId === ADMIN_ID) {
@@ -155,7 +171,7 @@ bot.on('callback_query', async (q) => {
   const chatId = q.message.chat.id.toString();
   const d = q.data;
   if (d === "check_sub") {
-    if (await isSubscribed(chatId)) { await bot.deleteMessage(chatId, q.message.message_id); return bot.sendMessage(chatId, "✅ OK! /start bosing."); }
+    if (await isSubscribed(chatId)) { await bot.deleteMessage(chatId, q.message.message_id); return bot.sendMessage(chatId, "✅ Tasdiqlandi."); }
   } else if (d.startsWith("view_user:")) {
     const u = db.users[d.split(":")[1]];
     if (u) bot.sendMessage(chatId, `👤 <b>Ma'lumot:</b>\n🆔 <code>${u.id}</code>\n👤 ${u.name}\n🌐 @${u.username || 'yoq'}`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } });
