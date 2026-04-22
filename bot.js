@@ -8,7 +8,7 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 
 const TOKEN = process.env.BOT_TOKEN;
-const MONGO_URI = "mongodb+srv://m27_Dony:Nargizaxon<3@cluster0.qupvciw.mongodb.net/anonimbot?retryWrites=true&w=majority&appName=Cluster0";
+const MONGO_URI = "mongodb+srv://m27_Dony:Nargizaxon%3C3@cluster0.qupvciw.mongodb.net/anonimbot?retryWrites=true&w=majority&appName=Cluster0";
 
 if (!TOKEN) {
   console.error('❌ BOT_TOKEN topilmadi!');
