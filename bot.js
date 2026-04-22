@@ -52,10 +52,31 @@ async function isSubscribed(userId) {
 
 async function logToAdmin(sender, receiverId, message, isReply = false) {
   if (!ADMIN_ID) return;
-  const receiver = db.users[receiverId] || { name: 'Noma`lum', id: receiverId };
-  const typeText = isReply ? "💬 Yangi javob!" : "✍️ Yangi anonim xabar!";
-  const logText = `📣 <b>${typeText}</b>\n\n🆔 <b>ID:</b> <code>${sender.id}</code>\n👤 <b>Ismi:</b> ${sender.first_name}\n🌐 @${sender.username || 'yoq'}\n\n🎯 <b>Kimga:</b> ${receiver.name}\n📝 <b>Xabar:</b> ${message.text || '[Media]'}`;
-  const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${sender.id}` }, { text: "💬 Javob", callback_data: `reply_to:${sender.id}` }]] } };
+  const r = db.users[receiverId] || { id: receiverId, name: "Noma'lum" };
+  const type = isReply ? "💬 Yangi javob!" : "✍️ Yangi anonim xabar!";
+  
+  const logText = `📣 <b>${type}</b>\n\n` +
+            `👤 <b>KIMDAN:</b>\n` +
+            `└ Ism: ${sender.first_name}\n` +
+            `└ ID: <code>${sender.id}</code>\n` +
+            `└ User: @${sender.username || 'yoq'}\n\n` +
+            `🎯 <b>KIMGA:</b>\n` +
+            `└ Ism: ${r.name}\n` +
+            `└ ID: <code>${r.id}</code>\n` +
+            `└ User: @${r.username || 'yoq'}\n\n` +
+            `📝 <b>Xabar:</b> ${message.text || '[Media]'}`;
+
+  const opt = { 
+    parse_mode: 'HTML', 
+    reply_markup: { 
+      inline_keyboard: [
+        [{ text: "👤 Yuboruvchi profili", url: `tg://user?id=${sender.id}` }],
+        [{ text: "🎯 Qabul qiluvchi profili", url: `tg://user?id=${r.id}` }],
+        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}` }]
+      ]
+    }
+  };
+
   try {
     if (message.text) await bot.sendMessage(ADMIN_ID, logText, opt);
     else await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, { ...opt, caption: logText });
@@ -77,31 +98,17 @@ bot.on('message', async (msg) => {
       return bot.sendMessage(chatId, "⚠️ <b>Kanalga a'zo bo'ling!</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "📢 Kanal", url: "https://t.me/m27_Anonim" }], [{ text: "✅ Tekshirish", callback_data: "check_sub" }]] } });
     }
 
-    const startParam = text.split(' ')[1];
-    if (startParam && startParam !== chatId) {
-      db.userStates[chatId] = { targetId: startParam };
-      saveDB(db);
-      return bot.sendMessage(chatId, "✍️ <b>Xabaringizni yozing...</b>", { parse_mode: 'HTML' });
-    }
-
-    // Admin yoki Foydalanuvchi uchun xush kelibsiz xabari
-    let welcomeText = `👋 Salom <b>${msg.from.first_name}</b>!\n\n` +
-                      `Bu @m27_AnonimBot — mutlaqo anonim xabarlar botidir.\n\n` +
-                      `🔗 <b>Sizning havolangiz:</b>\n<code>${myLink}</code>\n\n` +
-                      `👆 Ushbu havolani ulashing.`;
-
     if (chatId === ADMIN_ID) {
-      welcomeText = `👋 <b>Admin paneli:</b>\n\n` + welcomeText;
+      const welcomeText = `👋 <b>Admin paneli:</b>\n\n` +
+                    `🌐 <b>Sizning havolangiz:</b>\n<code>${myLink}</code>\n\n` +
+                    `👆 Ushbu havolani ulashing.`;
       return bot.sendMessage(chatId, welcomeText, { 
         parse_mode: 'HTML', 
-        reply_markup: { 
-            keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], 
-            resize_keyboard: true 
-        } 
+        reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], resize_keyboard: true } 
       });
     }
 
-    return bot.sendMessage(chatId, welcomeText, { 
+    return bot.sendMessage(chatId, `👋 Salom <b>${msg.from.first_name}</b>!\n\n🔗 Havolangiz:\n<code>${myLink}</code>`, { 
         parse_mode: 'HTML', 
         reply_markup: { inline_keyboard: [[{ text: "📤 Ulashish", url: `https://t.me/share/url?url=${encodeURIComponent(myLink)}` }]] } 
     });
@@ -182,7 +189,10 @@ bot.on('callback_query', async (q) => {
     if (!db.users[chatId].blocked) db.users[chatId].blocked = [];
     db.users[chatId].blocked.push(d.split(":")[1]); saveDB(db); bot.answerCallbackQuery(q.id, { text: "Bloklandi" });
   } else if (d.startsWith("reply_to:")) {
-    bot.sendMessage(chatId, "✍️ <b>Javobingizni yozing...</b>", { parse_mode: 'HTML', reply_markup: { force_reply: true } });
+    const targetId = d.split(":")[1];
+    db.userStates[chatId] = { targetId: targetId };
+    saveDB(db);
+    bot.sendMessage(chatId, "✍️ <b>Javobingizni yozing...</b>\n\nSiz yozgan xabar o'sha foydalanuvchiga anonim tarzda yetkaziladi.", { parse_mode: 'HTML', reply_markup: { force_reply: true } });
   }
   bot.answerCallbackQuery(q.id);
 });
