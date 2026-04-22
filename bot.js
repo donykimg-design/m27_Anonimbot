@@ -189,7 +189,8 @@ bot.on('message', async (msg) => {
     }
   }
 
-  if (hasProfanity(text)) return bot.sendMessage(chatId, TEXTS.profanityError, { parse_mode: 'HTML' });
+  // Sokinishni tekshirish (Admindan tashqari hamma uchun)
+  if (chatId !== ADMIN_ID && hasProfanity(text)) return bot.sendMessage(chatId, TEXTS.profanityError, { parse_mode: 'HTML' });
 
   if (msg.reply_to_message) {
     const targetUserId = db.replyMap[`${chatId}:${msg.reply_to_message.message_id}`];
@@ -211,16 +212,32 @@ bot.on('message', async (msg) => {
   if (state) {
     if (state.adminAction === 'broadcast' && chatId === ADMIN_ID) {
       const users = Object.keys(db.users);
-      for (const u of users) { try { await bot.copyMessage(u, chatId, msg.message_id); } catch (e) {} }
+      let count = 0;
+      for (const u of users) {
+        try {
+          if (u !== ADMIN_ID) { // O'zingizga yubormaslik uchun
+            await bot.copyMessage(u, chatId, msg.message_id);
+            count++;
+          }
+        } catch (e) {}
+      }
       delete db.userStates[chatId];
       saveDB(db);
-      return bot.sendMessage(chatId, "✅ Tugadi.");
+      return bot.sendMessage(chatId, `✅ Xabar ${count} ta foydalanuvchiga muvaffaqiyatli yuborildi.`);
     }
     if (state.targetId) {
       const targetId = state.targetId;
       if (db.users[targetId]?.blocked?.includes(chatId)) return bot.sendMessage(chatId, TEXTS.blockedMessage);
       try {
-        const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🚫 Bloklash", callback_data: `block_user:${chatId}` }]] } };
+        const opt = { 
+            parse_mode: 'HTML', 
+            reply_markup: { 
+                inline_keyboard: [[
+                    { text: "🚫 Bloklash", callback_data: `block_user:${chatId}` },
+                    { text: "💬 Javob berish", callback_data: `reply_to:${chatId}` }
+                ]] 
+            } 
+        };
         let sent = msg.text ? await bot.sendMessage(targetId, TEXTS.receivedHeader + msg.text + TEXTS.replyHint, opt) : await bot.copyMessage(targetId, chatId, msg.message_id, { ...opt, caption: TEXTS.receivedHeader + TEXTS.replyHint });
         db.replyMap[`${targetId}:${sent.message_id}`] = chatId;
         db.messageLinker[`${chatId}:${sent.message_id}`] = msg.message_id;
@@ -249,6 +266,12 @@ bot.on('callback_query', async (query) => {
       saveDB(db);
       bot.answerCallbackQuery(query.id, { text: "Bloklandi" });
     }
+  } else if (data.startsWith("reply_to:")) {
+    const targetId = data.split(":")[1];
+    bot.sendMessage(chatId, "✍️ <b>Javobingizni hoziroq yozing...</b>\n\nSiz yozgan xabar o'sha foydalanuvchiga anonim tarzda yetkaziladi.", {
+        parse_mode: 'HTML',
+        reply_markup: { force_reply: true }
+    });
   }
 });
 
