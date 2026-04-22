@@ -85,7 +85,7 @@ const TEXTS = {
   broadcastPrompt: `📢 <b>Broadcasting:</b> Xabaringizni yozing (barcha foydalanuvchilarga yuboriladi).`
 };
 
-const ADMIN_ID = process.env.ADMIN_ID ? process.env.ADMIN_ID.trim() : undefined; 
+const ADMIN_ID = '6756534512'; // Yangi Admin ID o'rnatildi
 const CHANNEL_ID = '@m27_Anonim'; 
 
 // Haqoratli so'zlar ro'yxati (Buni o'zingiz to'ldirishingiz mumkin)
