@@ -174,7 +174,10 @@ bot.on('callback_query', async (q) => {
     if (await isSubscribed(chatId)) { await bot.deleteMessage(chatId, q.message.message_id); return bot.sendMessage(chatId, "✅ Tasdiqlandi."); }
   } else if (d.startsWith("view_user:")) {
     const u = db.users[d.split(":")[1]];
-    if (u) bot.sendMessage(chatId, `👤 <b>Ma'lumot:</b>\n🆔 <code>${u.id}</code>\n👤 ${u.name}\n🌐 @${u.username || 'yoq'}`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } });
+    if (u) {
+        const date = new Date(u.joinedAt).toLocaleString('uz-UZ', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).replace(',', '');
+        bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${u.name}\n🌐 @${u.username || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } });
+    }
   } else if (d.startsWith("block_user:")) {
     if (!db.users[chatId].blocked) db.users[chatId].blocked = [];
     db.users[chatId].blocked.push(d.split(":")[1]); saveDB(db); bot.answerCallbackQuery(q.id, { text: "Bloklandi" });
