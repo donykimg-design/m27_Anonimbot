@@ -85,7 +85,7 @@ const TEXTS = {
   broadcastPrompt: `📢 <b>Broadcasting:</b> Xabaringizni yozing (barcha foydalanuvchilarga yuboriladi).`
 };
 
-const ADMIN_ID = process.env.ADMIN_ID; 
+const ADMIN_ID = process.env.ADMIN_ID ? process.env.ADMIN_ID.trim() : undefined; 
 const CHANNEL_ID = '@m27_Anonim'; 
 
 // Haqoratli so'zlar ro'yxati (Buni o'zingiz to'ldirishingiz mumkin)
@@ -164,6 +164,11 @@ bot.on('message', async (msg) => {
   const chatId = msg.chat.id.toString();
   const text = msg.text || '';
 
+  // O'z ID sini bilish uchun buyruq
+  if (text === '/myid') {
+    return bot.sendMessage(chatId, `Sizning ID: <code>${chatId}</code>`, { parse_mode: 'HTML' });
+  }
+
   // 1. /start buyrug'i
   if (text.startsWith('/start')) {
     // Foydalanuvchini bazaga qo'shish
@@ -204,24 +209,36 @@ bot.on('message', async (msg) => {
     }
 
     // O'ziga start bossa - Link berish (faqat obuna bo'lgan bo'lsa)
+    if (ADMIN_ID && chatId === ADMIN_ID) {
+        console.log(`Admin panel ochildi: ${chatId}`);
+        await bot.sendMessage(chatId, "👋 Salom Admin! Panelimizga xush kelibsiz.", {
+            reply_markup: {
+                keyboard: [
+                    ['📊 Statistika', '📢 Xabar yuborish'],
+                    ['🚫 Bloklarni ko'rish', '❓ Yordam']
+                ],
+                resize_keyboard: true
+            }
+        });
+    }
     return sendWelcomeMessage(chatId, msg.from.first_name);
   }
 
-  // 2. Admin buyruqlari
+  // 2. Admin buyruqlari (Tugmalar orqali)
   if (chatId === ADMIN_ID) {
-    if (text === '/stats') {
+    if (text === '/stats' || text === '📊 Statistika') {
       const userCount = Object.keys(db.users).length;
       const msgCount = Object.keys(db.replyMap).length;
       return bot.sendMessage(chatId, TEXTS.stats(userCount, msgCount), { parse_mode: 'HTML' });
     }
 
-    if (text === '/send') {
+    if (text === '/send' || text === '📢 Xabar yuborish') {
       db.userStates[chatId] = { adminAction: 'broadcast' };
       saveDB(db);
       return bot.sendMessage(chatId, TEXTS.broadcastPrompt, { parse_mode: 'HTML' });
     }
 
-    if (text === '/view_blocks') {
+    if (text === '/view_blocks' || text === '🚫 Bloklarni ko'rish') {
       let list = "🚫 <b>Barcha bloklar ro'yxati:</b>\n\n";
       Object.keys(db.users).forEach(uid => {
         const u = db.users[uid];
