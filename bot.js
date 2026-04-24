@@ -201,7 +201,18 @@ bot.on('callback_query', async (q) => {
   const chatId = q.message.chat.id.toString();
   const d = q.data;
   if (d === "check_sub") {
-    if (await isSubscribed(chatId)) { await bot.deleteMessage(chatId, q.message.message_id); return bot.sendMessage(chatId, "✅ Tasdiqlandi!"); }
+    const userId = q.from.id;
+    const subscribed = await isSubscribed(userId);
+    if (subscribed) {
+      await bot.deleteMessage(chatId, q.message.message_id);
+      await bot.sendMessage(chatId, "✅ Tasdiqlandi! Botdan foydalanish uchun /start buyrug'ini bosing.");
+      return bot.answerCallbackQuery(q.id);
+    } else {
+      return bot.answerCallbackQuery(q.id, { 
+        text: "❌ Siz hali kanalga a'zo bo'lmadingiz! Iltimos, kanalga a'zo bo'ling va qayta urinib ko'ring.", 
+        show_alert: true 
+      });
+    }
   } else if (d.startsWith("view_user:")) {
     const u = await User.findOne({ id: d.split(":")[1] });
     if (u) {
