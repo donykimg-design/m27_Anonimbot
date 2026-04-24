@@ -96,7 +96,7 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
   try {
     if (message.text) await bot.sendMessage(ADMIN_ID, logText, opt);
     else {
-      const canHaveCaption = !['sticker', 'video_note', 'dice'].some(type => message[type]);
+      const canHaveCaption = !message.sticker && !message.video_note && !message.dice;
       await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, canHaveCaption ? { ...opt, caption: logText } : opt);
     }
   } catch (e) { console.error('Log error:', e); }
@@ -104,7 +104,7 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
 
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id.toString();
-  const text = msg.text || '';
+  const text = msg.text || msg.caption || '';
   const myLink = `https://t.me/m27_AnonimBot?start=${chatId}`;
 
   if (text === '/myid') return bot.sendMessage(chatId, `ID: <code>${chatId}</code>`, { parse_mode: 'HTML' });
@@ -195,13 +195,16 @@ bot.on('message', async (msg) => {
             ] 
           }
         };
-        const isText = !!msg.text;
-        const canHaveCaption = !['sticker', 'video_note', 'dice'].some(type => msg[type]);
-        const caption = `💬 <b>Javob xati:</b>`;
+        const header = `💬 <b>Javob xati:</b>`;
+        let sent;
         
-        let sent = isText 
-          ? await bot.sendMessage(map.targetId, `💬 <b>Javob xati:</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) 
-          : await bot.copyMessage(map.targetId, chatId, msg.message_id, canHaveCaption ? { ...opt, caption } : opt);
+        if (msg.text) {
+          sent = await bot.sendMessage(map.targetId, `${header}\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt);
+        } else {
+          const canHaveCaption = !msg.sticker && !msg.video_note && !msg.dice;
+          if (canHaveCaption) opt.caption = `${header}\n\n${msg.caption || ''}`;
+          sent = await bot.copyMessage(map.targetId, chatId, msg.message_id, opt);
+        }
           
         await MsgMap.create({ key: `${map.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.message_id.toString() });
         logToAdmin(msg.from, map.targetId, msg, true);
@@ -215,15 +218,10 @@ bot.on('message', async (msg) => {
     if (state.adminAction === 'broadcast' && chatId === ADMIN_ID) {
       const users = await User.find();
       let count = 0;
-      const broadcastMarkup = {
-        inline_keyboard: [
-          [{ text: "❤️ Like", callback_data: "br_like" }, { text: "❌ O'chirish", callback_data: "br_delete" }]
-        ]
-      };
       for (const u of users) { 
         try { 
           if (u.id !== ADMIN_ID) { 
-            await bot.copyMessage(u.id, chatId, msg.message_id, { reply_markup: broadcastMarkup }); 
+            await bot.copyMessage(u.id, chatId, msg.message_id); 
             count++; 
           } 
         } catch (e) {} 
@@ -241,13 +239,16 @@ bot.on('message', async (msg) => {
           reply_markup: { inline_keyboard: [[{ text: "💬 Javob", callback_data: `reply_to:${chatId}:${msg.message_id}` }]] } 
         };
         
-        const isText = !!msg.text;
-        const canHaveCaption = !['sticker', 'video_note', 'dice'].some(type => msg[type]);
-        const caption = `💎 <b>Yangi anonim xabar!</b>`;
+        const header = `💎 <b>Yangi anonim xabar!</b>`;
+        let sent;
 
-        let sent = isText 
-          ? await bot.sendMessage(state.targetId, `💎 <b>Yangi anonim xabar!</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) 
-          : await bot.copyMessage(state.targetId, chatId, msg.message_id, canHaveCaption ? { ...opt, caption } : opt);
+        if (msg.text) {
+          sent = await bot.sendMessage(state.targetId, `${header}\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt);
+        } else {
+          const canHaveCaption = !msg.sticker && !msg.video_note && !msg.dice;
+          if (canHaveCaption) opt.caption = `${header}\n\n${msg.caption || ''}`;
+          sent = await bot.copyMessage(state.targetId, chatId, msg.message_id, opt);
+        }
           
         await MsgMap.create({ key: `${state.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.message_id.toString() });
         await State.deleteOne({ id: chatId });
@@ -283,11 +284,6 @@ bot.on('callback_query', async (q) => {
           reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } 
         });
     }
-  } else if (d === "br_like") {
-    bot.answerCallbackQuery(q.id, { text: "Sizga yoqqanidan xursandmiz! ❤️", show_alert: false });
-  } else if (d === "br_delete") {
-    try { await bot.deleteMessage(chatId, q.message.message_id); } catch (e) {}
-    bot.answerCallbackQuery(q.id, { text: "Xabar o'chirildi." });
   } else if (d.startsWith("block_for:")) {
     const [_, senderId, receiverId] = d.split(":");
     await User.updateOne({ id: receiverId }, { $addToSet: { blocked: senderId } });
