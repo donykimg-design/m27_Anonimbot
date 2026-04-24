@@ -95,8 +95,11 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
 
   try {
     if (message.text) await bot.sendMessage(ADMIN_ID, logText, opt);
-    else await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, { ...opt, caption: logText });
-  } catch (e) {}
+    else {
+      const canHaveCaption = !['sticker', 'video_note', 'dice'].some(type => message[type]);
+      await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, canHaveCaption ? { ...opt, caption: logText } : opt);
+    }
+  } catch (e) { console.error('Log error:', e); }
 }
 
 bot.on('message', async (msg) => {
@@ -192,11 +195,18 @@ bot.on('message', async (msg) => {
             ] 
           }
         };
-        let sent = msg.text ? await bot.sendMessage(map.targetId, `💬 <b>Javob xati:</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) : await bot.copyMessage(map.targetId, chatId, msg.message_id, { ...opt, caption: `💬 <b>Javob xati:</b>` });
+        const isText = !!msg.text;
+        const canHaveCaption = !['sticker', 'video_note', 'dice'].some(type => msg[type]);
+        const caption = `💬 <b>Javob xati:</b>`;
+        
+        let sent = isText 
+          ? await bot.sendMessage(map.targetId, `💬 <b>Javob xati:</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) 
+          : await bot.copyMessage(map.targetId, chatId, msg.message_id, canHaveCaption ? { ...opt, caption } : opt);
+          
         await MsgMap.create({ key: `${map.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.message_id.toString() });
         logToAdmin(msg.from, map.targetId, msg, true);
         return bot.sendMessage(chatId, "✅ Yuborildi.");
-      } catch (e) { return bot.sendMessage(chatId, "❌ Xato."); }
+      } catch (e) { console.error('Reply error:', e); return bot.sendMessage(chatId, "❌ Xato."); }
     }
   }
 
@@ -205,7 +215,19 @@ bot.on('message', async (msg) => {
     if (state.adminAction === 'broadcast' && chatId === ADMIN_ID) {
       const users = await User.find();
       let count = 0;
-      for (const u of users) { try { if (u.id !== ADMIN_ID) { await bot.copyMessage(u.id, chatId, msg.message_id); count++; } } catch (e) {} }
+      const broadcastMarkup = {
+        inline_keyboard: [
+          [{ text: "❤️ Like", callback_data: "br_like" }, { text: "❌ O'chirish", callback_data: "br_delete" }]
+        ]
+      };
+      for (const u of users) { 
+        try { 
+          if (u.id !== ADMIN_ID) { 
+            await bot.copyMessage(u.id, chatId, msg.message_id, { reply_markup: broadcastMarkup }); 
+            count++; 
+          } 
+        } catch (e) {} 
+      }
       await State.deleteOne({ id: chatId });
       return bot.sendMessage(chatId, `✅ Xabar ${count} kishiga yuborildi.`);
     }
@@ -218,12 +240,20 @@ bot.on('message', async (msg) => {
           parse_mode: 'HTML', 
           reply_markup: { inline_keyboard: [[{ text: "💬 Javob", callback_data: `reply_to:${chatId}:${msg.message_id}` }]] } 
         };
-        let sent = msg.text ? await bot.sendMessage(state.targetId, `💎 <b>Yangi anonim xabar!</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) : await bot.copyMessage(state.targetId, chatId, msg.message_id, { ...opt, caption: `💎 <b>Yangi anonim xabar!</b>` });
+        
+        const isText = !!msg.text;
+        const canHaveCaption = !['sticker', 'video_note', 'dice'].some(type => msg[type]);
+        const caption = `💎 <b>Yangi anonim xabar!</b>`;
+
+        let sent = isText 
+          ? await bot.sendMessage(state.targetId, `💎 <b>Yangi anonim xabar!</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) 
+          : await bot.copyMessage(state.targetId, chatId, msg.message_id, canHaveCaption ? { ...opt, caption } : opt);
+          
         await MsgMap.create({ key: `${state.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.message_id.toString() });
         await State.deleteOne({ id: chatId });
         logToAdmin(msg.from, state.targetId, msg, false);
         return bot.sendMessage(chatId, "✅ Yuborildi.");
-      } catch (e) { return bot.sendMessage(chatId, "❌ Xato."); }
+      } catch (e) { console.error('Send error:', e); return bot.sendMessage(chatId, "❌ Xato."); }
     }
   }
 });
@@ -253,6 +283,11 @@ bot.on('callback_query', async (q) => {
           reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } 
         });
     }
+  } else if (d === "br_like") {
+    bot.answerCallbackQuery(q.id, { text: "Sizga yoqqanidan xursandmiz! ❤️", show_alert: false });
+  } else if (d === "br_delete") {
+    try { await bot.deleteMessage(chatId, q.message.message_id); } catch (e) {}
+    bot.answerCallbackQuery(q.id, { text: "Xabar o'chirildi." });
   } else if (d.startsWith("block_for:")) {
     const [_, senderId, receiverId] = d.split(":");
     await User.updateOne({ id: receiverId }, { $addToSet: { blocked: senderId } });
