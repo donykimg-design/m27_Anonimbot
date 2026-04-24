@@ -24,7 +24,8 @@ const UserSchema = new mongoose.Schema({
   name: String,
   username: String,
   joinedAt: { type: Date, default: Date.now },
-  blocked: [String]
+  blocked: [String],
+  isBanned: { type: Boolean, default: false }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -87,7 +88,7 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
       inline_keyboard: [
         [{ text: "👤 Yuboruvchi profili", url: `tg://user?id=${sender.id}` }],
         [{ text: "🎯 Qabul qiluvchi profili", url: `tg://user?id=${r.id}` }],
-        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}` }]
+        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}` }, { text: "🚫 Uni bu kishi uchun bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
       ]
     }
   };
@@ -156,6 +157,22 @@ bot.on('message', async (msg) => {
        blockedUsers.forEach(u => list += `👤 ${u.name}: ${u.blocked.length} ta\n`);
        return bot.sendMessage(chatId, list || "Bloklar yo'q.", { parse_mode: 'HTML' });
     }
+    if (text.startsWith('/block')) {
+      const parts = text.split(' ');
+      if (parts.length !== 3) return bot.sendMessage(chatId, "⚠️ To'g'ri format: <code>/block [Kimni] [Kimga]</code>", { parse_mode: 'HTML' });
+      const senderId = parts[1];
+      const receiverId = parts[2];
+      await User.updateOne({ id: receiverId }, { $addToSet: { blocked: senderId } });
+      return bot.sendMessage(chatId, `✅ ID <code>${senderId}</code> foydalanuvchisi ID <code>${receiverId}</code> uchun bloklandi.`, { parse_mode: 'HTML' });
+    }
+    if (text.startsWith('/unblock')) {
+      const parts = text.split(' ');
+      if (parts.length !== 3) return bot.sendMessage(chatId, "⚠️ To'g'ri format: <code>/unblock [Kimni] [Kimga]</code>", { parse_mode: 'HTML' });
+      const senderId = parts[1];
+      const receiverId = parts[2];
+      await User.updateOne({ id: receiverId }, { $pull: { blocked: senderId } });
+      return bot.sendMessage(chatId, `✅ ID <code>${senderId}</code> foydalanuvchisi ID <code>${receiverId}</code> uchun blokdan chiqarildi.`, { parse_mode: 'HTML' });
+    }
   }
 
   if (chatId !== ADMIN_ID && hasProfanity(text)) return bot.sendMessage(chatId, "🚫 So'kinmang!", { parse_mode: 'HTML' });
@@ -163,13 +180,15 @@ bot.on('message', async (msg) => {
   if (msg.reply_to_message) {
     const map = await MsgMap.findOne({ key: `${chatId}:${msg.reply_to_message.message_id}` });
     if (map) {
+      const targetUser = await User.findOne({ id: map.targetId });
+      if (targetUser?.blocked?.includes(chatId)) return bot.sendMessage(chatId, "⚠️ Siz ushbu foydalanuvchi uchun bloklangansiz.");
       try {
         const opt = { 
           reply_to_message_id: map.targetMsgId, 
           parse_mode: 'HTML',
           reply_markup: { 
             inline_keyboard: [
-              [{ text: "🚫 Bloklash", callback_data: `block_user:${chatId}` }, { text: "💬 Javob", callback_data: `reply_to:${chatId}` }]
+              [{ text: "💬 Javob", callback_data: `reply_to:${chatId}` }]
             ] 
           }
         };
@@ -192,9 +211,9 @@ bot.on('message', async (msg) => {
     }
     if (state.targetId) {
       const target = await User.findOne({ id: state.targetId });
-      if (target?.blocked?.includes(chatId)) return bot.sendMessage(chatId, "⚠️ Bloklangansiz.");
+      if (target?.blocked?.includes(chatId)) return bot.sendMessage(chatId, "⚠️ Siz ushbu foydalanuvchi uchun bloklangansiz.");
       try {
-        const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🚫 Bloklash", callback_data: `block_user:${chatId}` }, { text: "💬 Javob", callback_data: `reply_to:${chatId}` }]] } };
+        const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "💬 Javob", callback_data: `reply_to:${chatId}` }]] } };
         let sent = msg.text ? await bot.sendMessage(state.targetId, `💎 <b>Yangi anonim xabar!</b>\n\n${msg.text}\n\n<i>Javob uchun suring.</i>`, opt) : await bot.copyMessage(state.targetId, chatId, msg.message_id, { ...opt, caption: `💎 <b>Yangi anonim xabar!</b>` });
         await MsgMap.create({ key: `${state.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.message_id.toString() });
         await State.deleteOne({ id: chatId });
@@ -222,15 +241,19 @@ bot.on('callback_query', async (q) => {
       });
     }
   } else if (d.startsWith("view_user:")) {
+  } else if (d.startsWith("view_user:")) {
     const u = await User.findOne({ id: d.split(":")[1] });
     if (u) {
         const date = new Date(u.joinedAt).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).replace(',', '');
-        bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${u.name}\n🌐 @${u.username || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } });
+        bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${u.name}\n🌐 @${u.username || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { 
+          parse_mode: 'HTML', 
+          reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } 
+        });
     }
-  } else if (d.startsWith("block_user:")) {
-    const tId = d.split(":")[1];
-    await User.updateOne({ id: chatId }, { $addToSet: { blocked: tId } });
-    bot.answerCallbackQuery(q.id, { text: "Bloklandi" });
+  } else if (d.startsWith("block_for:")) {
+    const [_, senderId, receiverId] = d.split(":");
+    await User.updateOne({ id: receiverId }, { $addToSet: { blocked: senderId } });
+    bot.answerCallbackQuery(q.id, { text: "Yuboruvchi qabul qiluvchi uchun bloklandi", show_alert: true });
   } else if (d.startsWith("reply_to:")) {
     await State.findOneAndUpdate({ id: chatId }, { id: chatId, targetId: d.split(":")[1] }, { upsert: true });
     bot.sendMessage(chatId, "✍️ <b>Javobingizni yozing...</b>", { parse_mode: 'HTML', reply_markup: { force_reply: true } });
