@@ -24,8 +24,7 @@ const UserSchema = new mongoose.Schema({
   name: String,
   username: String,
   joinedAt: { type: Date, default: Date.now },
-  blocked: [String],
-  isBanned: { type: Boolean, default: false }
+  blocked: [String]
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -240,7 +239,6 @@ bot.on('callback_query', async (q) => {
         show_alert: true 
       });
     }
-  } else if (d.startsWith("view_user:")) {
   } else if (d.startsWith("view_user:")) {
     const u = await User.findOne({ id: d.split(":")[1] });
     if (u) {
