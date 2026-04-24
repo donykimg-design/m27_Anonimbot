@@ -38,6 +38,7 @@ const MsgMap = mongoose.model('MsgMap', MsgMapSchema);
 const StateSchema = new mongoose.Schema({
   id: { type: String, unique: true },
   targetId: String,
+  targetMsgId: String,
   adminAction: String
 });
 const State = mongoose.model('State', StateSchema);
@@ -87,7 +88,7 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
       inline_keyboard: [
         [{ text: "👤 Yuboruvchi profili", url: `tg://user?id=${sender.id}` }],
         [{ text: "🎯 Qabul qiluvchi profili", url: `tg://user?id=${r.id}` }],
-        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}` }, { text: "🚫 Uni bu kishi uchun bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
+        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bu kishi uchun bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
       ]
     }
   };
@@ -187,12 +188,12 @@ bot.on('message', async (msg) => {
           parse_mode: 'HTML',
           reply_markup: { 
             inline_keyboard: [
-              [{ text: "💬 Javob", callback_data: `reply_to:${chatId}` }]
+              [{ text: "💬 Javob", callback_data: `reply_to:${chatId}:${msg.message_id}` }]
             ] 
           }
         };
-        let sent = msg.text ? await bot.sendMessage(map.targetId, `💬 <b>Yangi javob!</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) : await bot.copyMessage(map.targetId, chatId, msg.message_id, { ...opt, caption: `💬 <b>Yangi javob!</b>` });
-        await MsgMap.create({ key: `${map.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.reply_to_message.message_id.toString() });
+        let sent = msg.text ? await bot.sendMessage(map.targetId, `💬 <b>Javob xati:</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) : await bot.copyMessage(map.targetId, chatId, msg.message_id, { ...opt, caption: `💬 <b>Javob xati:</b>` });
+        await MsgMap.create({ key: `${map.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.message_id.toString() });
         logToAdmin(msg.from, map.targetId, msg, true);
         return bot.sendMessage(chatId, "✅ Yuborildi.");
       } catch (e) { return bot.sendMessage(chatId, "❌ Xato."); }
@@ -212,8 +213,12 @@ bot.on('message', async (msg) => {
       const target = await User.findOne({ id: state.targetId });
       if (target?.blocked?.includes(chatId)) return bot.sendMessage(chatId, "⚠️ Siz ushbu foydalanuvchi uchun bloklangansiz.");
       try {
-        const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "💬 Javob", callback_data: `reply_to:${chatId}` }]] } };
-        let sent = msg.text ? await bot.sendMessage(state.targetId, `💎 <b>Yangi anonim xabar!</b>\n\n${msg.text}\n\n<i>Javob uchun suring.</i>`, opt) : await bot.copyMessage(state.targetId, chatId, msg.message_id, { ...opt, caption: `💎 <b>Yangi anonim xabar!</b>` });
+        const opt = { 
+          reply_to_message_id: state.targetMsgId,
+          parse_mode: 'HTML', 
+          reply_markup: { inline_keyboard: [[{ text: "💬 Javob", callback_data: `reply_to:${chatId}:${msg.message_id}` }]] } 
+        };
+        let sent = msg.text ? await bot.sendMessage(state.targetId, `💎 <b>Yangi anonim xabar!</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) : await bot.copyMessage(state.targetId, chatId, msg.message_id, { ...opt, caption: `💎 <b>Yangi anonim xabar!</b>` });
         await MsgMap.create({ key: `${state.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.message_id.toString() });
         await State.deleteOne({ id: chatId });
         logToAdmin(msg.from, state.targetId, msg, false);
@@ -253,7 +258,8 @@ bot.on('callback_query', async (q) => {
     await User.updateOne({ id: receiverId }, { $addToSet: { blocked: senderId } });
     bot.answerCallbackQuery(q.id, { text: "Yuboruvchi qabul qiluvchi uchun bloklandi", show_alert: true });
   } else if (d.startsWith("reply_to:")) {
-    await State.findOneAndUpdate({ id: chatId }, { id: chatId, targetId: d.split(":")[1] }, { upsert: true });
+    const parts = d.split(":");
+    await State.findOneAndUpdate({ id: chatId }, { id: chatId, targetId: parts[1], targetMsgId: parts[2] }, { upsert: true });
     bot.sendMessage(chatId, "✍️ <b>Javobingizni yozing...</b>", { parse_mode: 'HTML', reply_markup: { force_reply: true } });
   }
   bot.answerCallbackQuery(q.id);
