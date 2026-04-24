@@ -164,8 +164,16 @@ bot.on('message', async (msg) => {
     const map = await MsgMap.findOne({ key: `${chatId}:${msg.reply_to_message.message_id}` });
     if (map) {
       try {
-        const opt = { reply_to_message_id: map.targetMsgId, parse_mode: 'HTML' };
-        let sent = msg.text ? await bot.sendMessage(map.targetId, `💬 <b>Yangi javob!</b>\n\n${msg.text}\n\n<i>Javob uchun suring.</i>`, opt) : await bot.copyMessage(map.targetId, chatId, msg.message_id, { ...opt, caption: `💬 <b>Yangi javob!</b>` });
+        const opt = { 
+          reply_to_message_id: map.targetMsgId, 
+          parse_mode: 'HTML',
+          reply_markup: { 
+            inline_keyboard: [
+              [{ text: "🚫 Bloklash", callback_data: `block_user:${chatId}` }, { text: "💬 Javob", callback_data: `reply_to:${chatId}` }]
+            ] 
+          }
+        };
+        let sent = msg.text ? await bot.sendMessage(map.targetId, `💬 <b>Yangi javob!</b>\n\n${msg.text}\n\n<i>Javob uchun suring yoki pastdagi tugmani bosing.</i>`, opt) : await bot.copyMessage(map.targetId, chatId, msg.message_id, { ...opt, caption: `💬 <b>Yangi javob!</b>` });
         await MsgMap.create({ key: `${map.targetId}:${sent.message_id}`, targetId: chatId, targetMsgId: msg.reply_to_message.message_id.toString() });
         logToAdmin(msg.from, map.targetId, msg, true);
         return bot.sendMessage(chatId, "✅ Yuborildi.");
