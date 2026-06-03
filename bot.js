@@ -73,13 +73,14 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
   
   const logText = `📣 <b>${type}</b>\n\n` +
             `👤 <b>KIMDAN:</b>\n` +
-            `└ Ism: ${sender.first_name || 'Yoq'}\n` +
+            `└ Ism: ${sender.first_name}\n` +
             `└ ID: <code>${sender.id}</code>\n` +
             `└ User: @${sender.username || 'yoq'}\n\n` +
             `🎯 <b>KIMGA:</b>\n` +
-            `└ Ism: ${r.name || 'Yoq'}\n` +
+            `└ Ism: ${r.name}\n` +
             `└ ID: <code>${r.id}</code>\n` +
-            `└ User: @${r.username || 'yoq'}`;
+            `└ User: @${r.username || 'yoq'}\n\n` +
+            `📝 <b>Xabar:</b> ${message.text || '[Media]'}`;
 
   const opt = { 
     parse_mode: 'HTML', 
@@ -87,17 +88,16 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
       inline_keyboard: [
         [{ text: "👤 Yuboruvchi profili", url: `tg://user?id=${sender.id}` }],
         [{ text: "🎯 Qabul qiluvchi profili", url: `tg://user?id=${r.id}` }],
-        [{ text: "💬 Javob yozish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
+        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bu kishi uchun bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
       ]
     }
   };
 
   try {
-    if (message.text) {
-      await bot.sendMessage(ADMIN_ID, logText + `\n\n📝 <b>Xabar:</b>\n${message.text}`, opt);
-    } else {
-      await bot.sendMessage(ADMIN_ID, logText + `\n\n📁 <b>Media fayl quyida:</b>`, opt);
-      await bot.copyMessage(ADMIN_ID, sender.id, message.message_id);
+    if (message.text) await bot.sendMessage(ADMIN_ID, logText, opt);
+    else {
+      const canHaveCaption = !message.sticker && !message.video_note && !message.dice;
+      await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, canHaveCaption ? { ...opt, caption: logText } : opt);
     }
   } catch (e) { console.error('Log error:', e); }
 }
@@ -107,23 +107,15 @@ bot.on('message', async (msg) => {
   const text = msg.text || msg.caption || '';
   const myLink = `https://t.me/m27_AnonimBot?start=${chatId}`;
 
-  // HAR QANDAY xabar yozgan odam bazaga qo'shiladi
-  await User.findOneAndUpdate(
-    { id: chatId }, 
-    { id: chatId, name: msg.from.first_name, username: msg.from.username }, 
-    { upsert: true }
-  );
+  // SIZ SO'RAGAN NARSA: Har qanday xabarda odamni bazaga saqlaydi
+  await User.findOneAndUpdate({ id: chatId }, { id: chatId, name: msg.from.first_name, username: msg.from.username }, { upsert: true });
 
   if (text === '/myid') return bot.sendMessage(chatId, `ID: <code>${chatId}</code>`, { parse_mode: 'HTML' });
 
   if (text.startsWith('/start')) {
-    // Admin uchun obuna tekshiruvi yo'q
-    if (chatId !== ADMIN_ID && !(await isSubscribed(chatId))) {
+    if (!(await isSubscribed(chatId))) {
       return bot.sendMessage(chatId, "⚠️ <b>Kanalga a'zo bo'ling!</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "📢 Kanal", url: "https://t.me/m27_Anonim" }], [{ text: "✅ Tekshirish", callback_data: "check_sub" }]] } });
     }
-
-    // State ni tozalash (yangi /start bosganida)
-    await State.deleteOne({ id: chatId });
 
     const startParam = text.split(' ')[1];
     if (startParam && startParam !== chatId) {
@@ -132,10 +124,9 @@ bot.on('message', async (msg) => {
     }
 
     if (chatId === ADMIN_ID) {
-      const uCount = await User.countDocuments();
       const welcomeText = `👋 <b>Admin paneli:</b>\n\n` +
-                    `👥 Jami foydalanuvchilar: <b>${uCount}</b>\n\n` +
-                    `🌐 <b>Sizning havolangiz:</b>\n<code>${myLink}</code>`;
+                    `🌐 <b>Sizning havolangiz:</b>\n<code>${myLink}</code>\n\n` +
+                    `👆 Ushbu havolani ulashing.`;
       return bot.sendMessage(chatId, welcomeText, { 
         parse_mode: 'HTML', 
         reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], resize_keyboard: true } 
@@ -150,34 +141,28 @@ bot.on('message', async (msg) => {
 
   if (chatId === ADMIN_ID) {
     if (text === '📊 Statistika') {
-        // Menyu tugmasi bosilganda eski state ni tozala
-        await State.deleteOne({ id: chatId });
         const uCount = await User.countDocuments();
         const msgCount = await MsgMap.countDocuments();
-        return bot.sendMessage(chatId, `📊 <b>Statistika:</b>\n\n👤 Foydalanuvchilar: <b>${uCount}</b>\n✉️ Xabarlar: <b>${msgCount}</b>`, { parse_mode: 'HTML' });
+        return bot.sendMessage(chatId, `📊 <b>Statistika:</b>\n👤 Foydalanuvchilar: ${uCount}\n✉️ Xabarlar: ${msgCount}`, { parse_mode: 'HTML' });
     }
     if (text === '📢 Xabar yuborish') {
-      await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'broadcast', targetId: null, targetMsgId: null }, { upsert: true });
-      return bot.sendMessage(chatId, "📢 <b>Barcha foydalanuvchilarga yuboriladigan xabarni yozing:</b>\n\n<i>Bekor qilish uchun /start bosing</i>", { parse_mode: 'HTML' });
+      await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'broadcast' }, { upsert: true });
+      return bot.sendMessage(chatId, "📢 <b>Xabarni yozing:</b>", { parse_mode: 'HTML' });
     }
     if (text === '👤 Foydalanuvchilar') {
-      await State.deleteOne({ id: chatId });
-      // Telegram inline keyboard limitiga tushmaslik uchun oxirgi 80 ta foydalanuvchini olamiz
-      const users = await User.find().sort({ joinedAt: -1 }).limit(80);
-      const totalUsers = await User.countDocuments();
+      // SIZ SO'RAGAN NARSA: Knopkalar limitini qo'shdim, to'lib qotib qolmasligi uchun
+      const users = await User.find().sort({ joinedAt: -1 }).limit(90);
       if (users.length === 0) return bot.sendMessage(chatId, "Baza bo'sh.");
-      const buttons = users.map(u => [{ text: `👤 ${u.name} (@${u.username || 'yoq'})`, callback_data: `view_user:${u.id}` }]);
-      return bot.sendMessage(chatId, `👥 <b>Bot foydalanuvchilari (${totalUsers} ta, oxirgi 80 tasi ko'rsatilmoqda):</b>`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+      const buttons = users.map(u => [{ text: `👤 ${u.name}`, callback_data: `view_user:${u.id}` }]);
+      return bot.sendMessage(chatId, "👥 <b>Bot foydalanuvchilari:</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
     }
     if (text === '🚫 Bloklar') {
-       await State.deleteOne({ id: chatId });
        const blockedUsers = await User.find({ "blocked.0": { $exists: true } });
-       if (blockedUsers.length === 0) return bot.sendMessage(chatId, "🚫 Bloklar yo'q.");
        let list = "🚫 <b>Bloklar:</b>\n\n";
-       blockedUsers.forEach(u => list += `👤 ${u.name} (ID: <code>${u.id}</code>): ${u.blocked.length} ta bloklagan\n`);
-       return bot.sendMessage(chatId, list, { parse_mode: 'HTML' });
+       blockedUsers.forEach(u => list += `👤 ${u.name}: ${u.blocked.length} ta\n`);
+       return bot.sendMessage(chatId, list || "Bloklar yo'q.", { parse_mode: 'HTML' });
     }
-    if (text.startsWith('/ban ') || text.startsWith('/block ')) {
+    if (text.startsWith('/block')) {
       const parts = text.split(' ');
       if (parts.length !== 3) return bot.sendMessage(chatId, "⚠️ To'g'ri format: <code>/block [Kimni] [Kimga]</code>", { parse_mode: 'HTML' });
       const senderId = parts[1];
@@ -185,20 +170,13 @@ bot.on('message', async (msg) => {
       await User.updateOne({ id: receiverId }, { $addToSet: { blocked: senderId } });
       return bot.sendMessage(chatId, `✅ ID <code>${senderId}</code> foydalanuvchisi ID <code>${receiverId}</code> uchun bloklandi.`, { parse_mode: 'HTML' });
     }
-    if (text.startsWith('/unblock ')) {
+    if (text.startsWith('/unblock')) {
       const parts = text.split(' ');
       if (parts.length !== 3) return bot.sendMessage(chatId, "⚠️ To'g'ri format: <code>/unblock [Kimni] [Kimga]</code>", { parse_mode: 'HTML' });
       const senderId = parts[1];
       const receiverId = parts[2];
       await User.updateOne({ id: receiverId }, { $pull: { blocked: senderId } });
       return bot.sendMessage(chatId, `✅ ID <code>${senderId}</code> foydalanuvchisi ID <code>${receiverId}</code> uchun blokdan chiqarildi.`, { parse_mode: 'HTML' });
-    }
-    if (text.startsWith('/user ')) {
-      const userId = text.split(' ')[1];
-      const u = await User.findOne({ id: userId });
-      if (!u) return bot.sendMessage(chatId, `❌ ID <code>${userId}</code> topilmadi.`, { parse_mode: 'HTML' });
-      const date = new Date(u.joinedAt).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' });
-      return bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${u.name}\n🌐 @${u.username || 'yoq'}\n📅 ${date}\n🚫 Bloklar: ${u.blocked.length} ta`, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } });
     }
   }
 
@@ -300,19 +278,20 @@ bot.on('callback_query', async (q) => {
       });
     }
   } else if (d.startsWith("view_user:")) {
-    const userId = d.split(":")[1];
-    const u = await User.findOne({ id: userId });
+    const u = await User.findOne({ id: d.split(":")[1] });
     if (u) {
-        let dateStr = "Noma'lum";
-        if (u.joinedAt) {
-          try { dateStr = new Date(u.joinedAt).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' }); } catch(e){}
+        const date = new Date(u.joinedAt).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).replace(',', '');
+        
+        // SIZ SO'RAGAN NARSA: Ismlarida nuqta, probel, qavs bo'lsa xato bermasligi uchun esc funksiyasi
+        function esc(str) {
+          if (!str) return '';
+          return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
-        bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${u.name}\n🌐 @${u.username || 'yoq'}\n📅 <b>Sana:</b> ${dateStr}\n🚫 Bloklanganlar soni: ${u.blocked ? u.blocked.length : 0}`, { 
+
+        bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${esc(u.name)}\n🌐 @${esc(u.username) || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { 
           parse_mode: 'HTML', 
           reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } 
-        });
-    } else {
-        bot.answerCallbackQuery(q.id, { text: "Foydalanuvchi bazadan topilmadi!", show_alert: true });
+        }).catch(err => { bot.answerCallbackQuery(q.id, { text: "Xato", show_alert: true }); });
     }
   } else if (d.startsWith("block_for:")) {
     const [_, senderId, receiverId] = d.split(":");
