@@ -102,6 +102,35 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
   } catch (e) { console.error('Log error:', e); }
 }
 
+async function sendUsersPage(chatId, page, messageId = null) {
+  const limit = 30; // Bitta sahifada 30 ta odam chiqadi
+  const skip = (page - 1) * limit;
+  const users = await User.find().sort({ joinedAt: -1 }).skip(skip).limit(limit);
+  const totalUsers = await User.countDocuments();
+  const totalPages = Math.ceil(totalUsers / limit) || 1;
+  
+  if (users.length === 0 && page === 1) return bot.sendMessage(chatId, "Baza bo'sh.");
+  
+  const buttons = users.map(u => [{ text: `👤 ${u.name || 'Nomsiz'}`, callback_data: `view_user:${u.id}` }]);
+  
+  // Sahifalash tugmalari
+  const controls = [];
+  if (page > 1) controls.push({ text: "⬅️ Oldingi", callback_data: `users_page:${page - 1}` });
+  controls.push({ text: `📄 ${page}/${totalPages}`, callback_data: "ignore" });
+  if (page < totalPages) controls.push({ text: "Keyingi ➡️", callback_data: `users_page:${page + 1}` });
+  
+  buttons.push(controls);
+  
+  const text = `👥 <b>Bot foydalanuvchilari (${totalUsers} ta):</b>\nSahifa: ${page} / ${totalPages}`;
+  const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } };
+  
+  if (messageId) {
+    return bot.editMessageText(text, { chat_id: chatId, message_id: messageId, ...opt }).catch(()=>{});
+  } else {
+    return bot.sendMessage(chatId, text, opt);
+  }
+}
+
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id.toString();
   const text = msg.text || msg.caption || '';
@@ -150,11 +179,7 @@ bot.on('message', async (msg) => {
       return bot.sendMessage(chatId, "📢 <b>Xabarni yozing:</b>", { parse_mode: 'HTML' });
     }
     if (text === '👤 Foydalanuvchilar') {
-      // SIZ SO'RAGAN NARSA: Knopkalar limitini qo'shdim, to'lib qotib qolmasligi uchun
-      const users = await User.find().sort({ joinedAt: -1 }).limit(90);
-      if (users.length === 0) return bot.sendMessage(chatId, "Baza bo'sh.");
-      const buttons = users.map(u => [{ text: `👤 ${u.name}`, callback_data: `view_user:${u.id}` }]);
-      return bot.sendMessage(chatId, "👥 <b>Bot foydalanuvchilari:</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+      return sendUsersPage(chatId, 1);
     }
     if (text === '🚫 Bloklar') {
        const blockedUsers = await User.find({ "blocked.0": { $exists: true } });
@@ -277,10 +302,20 @@ bot.on('callback_query', async (q) => {
         show_alert: true 
       });
     }
+  } else if (d.startsWith("users_page:")) {
+    const page = parseInt(d.split(":")[1]);
+    await sendUsersPage(chatId, page, q.message.message_id);
+  } else if (d === "ignore") {
+    // Hech narsa qilmaydi
   } else if (d.startsWith("view_user:")) {
     const u = await User.findOne({ id: d.split(":")[1] });
     if (u) {
-        const date = new Date(u.joinedAt).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).replace(',', '');
+        let date = "Noma'lum";
+        if (u.joinedAt) {
+           try {
+             date = new Date(u.joinedAt).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).replace(',', '');
+           } catch(e) {}
+        }
         
         // SIZ SO'RAGAN NARSA: Ismlarida nuqta, probel, qavs bo'lsa xato bermasligi uchun esc funksiyasi
         function esc(str) {
@@ -291,7 +326,9 @@ bot.on('callback_query', async (q) => {
         bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${esc(u.name)}\n🌐 @${esc(u.username) || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { 
           parse_mode: 'HTML', 
           reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } 
-        }).catch(err => { bot.answerCallbackQuery(q.id, { text: "Xato", show_alert: true }); });
+        }).catch(err => { bot.answerCallbackQuery(q.id, { text: "Xato yuz berdi", show_alert: true }); });
+    } else {
+        bot.answerCallbackQuery(q.id, { text: "Foydalanuvchi bazadan topilmadi!", show_alert: true });
     }
   } else if (d.startsWith("block_for:")) {
     const [_, senderId, receiverId] = d.split(":");
