@@ -71,16 +71,22 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
   const r = await User.findOne({ id: receiverId }) || { id: receiverId, name: "Noma'lum" };
   const type = isReply ? "💬 Yangi javob!" : "✍️ Yangi anonim xabar!";
   
+  // HTML xatolaridan himoyalovchi funksiya
+  function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  
   const logText = `📣 <b>${type}</b>\n\n` +
             `👤 <b>KIMDAN:</b>\n` +
-            `└ Ism: ${sender.first_name}\n` +
+            `└ Ism: ${esc(sender.first_name)}\n` +
             `└ ID: <code>${sender.id}</code>\n` +
-            `└ User: @${sender.username || 'yoq'}\n\n` +
+            `└ User: @${esc(sender.username) || 'yoq'}\n\n` +
             `🎯 <b>KIMGA:</b>\n` +
-            `└ Ism: ${r.name}\n` +
+            `└ Ism: ${esc(r.name)}\n` +
             `└ ID: <code>${r.id}</code>\n` +
-            `└ User: @${r.username || 'yoq'}\n\n` +
-            `📝 <b>Xabar:</b> ${message.text || '[Media]'}`;
+            `└ User: @${esc(r.username) || 'yoq'}\n\n` +
+            `📝 <b>Xabar:</b> ${esc(message.text) || '[Media]'}`;
 
   const opt = { 
     parse_mode: 'HTML', 
