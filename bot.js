@@ -79,11 +79,11 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
   
   const logText = `📣 <b>${type}</b>\n\n` +
             `👤 <b>KIMDAN:</b>\n` +
-            `└ Ism: ${esc(sender.first_name)}\n` +
+            `└ Ism: <a href="tg://user?id=${sender.id}">${esc(sender.first_name)}</a>\n` +
             `└ ID: <code>${sender.id}</code>\n` +
             `└ User: @${esc(sender.username) || 'yoq'}\n\n` +
             `🎯 <b>KIMGA:</b>\n` +
-            `└ Ism: ${esc(r.name)}\n` +
+            `└ Ism: <a href="tg://user?id=${r.id}">${esc(r.name)}</a>\n` +
             `└ ID: <code>${r.id}</code>\n` +
             `└ User: @${esc(r.username) || 'yoq'}\n\n` +
             `📝 <b>Xabar:</b> ${esc(message.text) || '[Media]'}`;
@@ -92,8 +92,6 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
     parse_mode: 'HTML', 
     reply_markup: { 
       inline_keyboard: [
-        [{ text: "👤 Yuboruvchi profili", url: `tg://user?id=${sender.id}` }],
-        [{ text: "🎯 Qabul qiluvchi profili", url: `tg://user?id=${r.id}` }],
         [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bu kishi uchun bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
       ]
     }
@@ -329,9 +327,8 @@ bot.on('callback_query', async (q) => {
           return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 ${esc(u.name)}\n🌐 @${esc(u.username) || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { 
-          parse_mode: 'HTML', 
-          reply_markup: { inline_keyboard: [[{ text: "🔗 Profil", url: `tg://user?id=${u.id}` }]] } 
+        bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 <a href="tg://user?id=${u.id}">${esc(u.name)}</a>\n🌐 @${esc(u.username) || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { 
+          parse_mode: 'HTML' 
         }).catch(err => { bot.answerCallbackQuery(q.id, { text: "Xato yuz berdi", show_alert: true }); });
     } else {
         bot.answerCallbackQuery(q.id, { text: "Foydalanuvchi bazadan topilmadi!", show_alert: true });
