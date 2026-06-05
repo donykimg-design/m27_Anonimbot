@@ -102,6 +102,7 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
     parse_mode: 'HTML', 
     reply_markup: { 
       inline_keyboard: [
+        [{ text: "👤 Yuboruvchi (Yashirin)", callback_data: "hidden_profile" }, { text: "👤 Qabul qiluvchi (Yashirin)", callback_data: "hidden_profile" }],
         [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
       ]
     }
@@ -329,6 +330,8 @@ bot.on('callback_query', async (q) => {
     await sendUsersPage(chatId, page, q.message.message_id);
   } else if (d === "ignore") {
     // Hech narsa qilmaydi
+  } else if (d === "hidden_profile") {
+    return bot.answerCallbackQuery(q.id, { text: "⚠️ Bu foydalanuvchi Telegram sozlamalarida o'z profilini yashirgan! Shuning uchun uning profiliga to'g'ridan-to'g'ri o'tib bo'lmaydi.", show_alert: true });
   } else if (d.startsWith("view_user:")) {
     const u = await User.findOne({ id: d.split(":")[1] });
     if (u) {
@@ -350,7 +353,10 @@ bot.on('callback_query', async (q) => {
           parse_mode: 'HTML',
           reply_markup: { inline_keyboard: [[{ text: "👤 Profilni ko'rish", url: `tg://user?id=${u.id}` }]] }
         }).catch(err => { 
-          bot.sendMessage(chatId, textMsg, { parse_mode: 'HTML' }).catch(e => {
+          bot.sendMessage(chatId, textMsg, { 
+             parse_mode: 'HTML',
+             reply_markup: { inline_keyboard: [[{ text: "👤 Profilni ko'rish", callback_data: "hidden_profile" }]] }
+          }).catch(e => {
              bot.answerCallbackQuery(q.id, { text: "Xato yuz berdi", show_alert: true });
           });
         });
