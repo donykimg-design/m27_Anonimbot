@@ -92,7 +92,17 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
     parse_mode: 'HTML', 
     reply_markup: { 
       inline_keyboard: [
-        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bu kishi uchun bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
+        [{ text: "👤 Yuboruvchi", url: `tg://user?id=${sender.id}` }, { text: "👤 Qabul qiluvchi", url: `tg://user?id=${r.id}` }],
+        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
+      ]
+    }
+  };
+
+  const optFallback = {
+    parse_mode: 'HTML', 
+    reply_markup: { 
+      inline_keyboard: [
+        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
       ]
     }
   };
@@ -103,7 +113,15 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
       const canHaveCaption = !message.sticker && !message.video_note && !message.dice;
       await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, canHaveCaption ? { ...opt, caption: logText } : opt);
     }
-  } catch (e) { console.error('Log error:', e); }
+  } catch (e) { 
+    try {
+      if (message.text) await bot.sendMessage(ADMIN_ID, logText, optFallback);
+      else {
+        const canHaveCaption = !message.sticker && !message.video_note && !message.dice;
+        await bot.copyMessage(ADMIN_ID, sender.id, message.message_id, canHaveCaption ? { ...optFallback, caption: logText } : optFallback);
+      }
+    } catch (err) { console.error('Log fallback error:', err); }
+  }
 }
 
 async function sendUsersPage(chatId, page, messageId = null) {
@@ -188,7 +206,7 @@ bot.on('message', async (msg) => {
     if (text === '🚫 Bloklar') {
        const blockedUsers = await User.find({ "blocked.0": { $exists: true } });
        let list = "🚫 <b>Bloklar:</b>\n\n";
-       blockedUsers.forEach(u => list += `👤 ${u.name}: ${u.blocked.length} ta\n`);
+       blockedUsers.forEach(u => list += `👤 <a href="tg://user?id=${u.id}">${u.name.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</a>: ${u.blocked.length} ta bloklangan\n`);
        return bot.sendMessage(chatId, list || "Bloklar yo'q.", { parse_mode: 'HTML' });
     }
     if (text.startsWith('/block')) {
@@ -327,9 +345,15 @@ bot.on('callback_query', async (q) => {
           return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        bot.sendMessage(chatId, `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 <a href="tg://user?id=${u.id}">${esc(u.name)}</a>\n🌐 @${esc(u.username) || 'yoq'}\n📅 <b>Sana:</b> ${date}`, { 
-          parse_mode: 'HTML' 
-        }).catch(err => { bot.answerCallbackQuery(q.id, { text: "Xato yuz berdi", show_alert: true }); });
+        const textMsg = `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 <a href="tg://user?id=${u.id}">${esc(u.name)}</a>\n🌐 @${esc(u.username) || 'yoq'}\n📅 <b>Sana:</b> ${date}`;
+        bot.sendMessage(chatId, textMsg, { 
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: [[{ text: "👤 Profilni ko'rish", url: `tg://user?id=${u.id}` }]] }
+        }).catch(err => { 
+          bot.sendMessage(chatId, textMsg, { parse_mode: 'HTML' }).catch(e => {
+             bot.answerCallbackQuery(q.id, { text: "Xato yuz berdi", show_alert: true });
+          });
+        });
     } else {
         bot.answerCallbackQuery(q.id, { text: "Foydalanuvchi bazadan topilmadi!", show_alert: true });
     }
