@@ -23,8 +23,7 @@ const UserSchema = new mongoose.Schema({
   id: { type: String, unique: true },
   name: String,
   username: String,
-  joinedAt: { type: Date, default: Date.now },
-  blocked: [String]
+  joinedAt: { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -43,6 +42,12 @@ const StateSchema = new mongoose.Schema({
 });
 const State = mongoose.model('State', StateSchema);
 
+const ChannelSchema = new mongoose.Schema({
+  chatId: String,
+  url: String
+});
+const Channel = mongoose.model('Channel', ChannelSchema);
+
 const bot = new TelegramBot(TOKEN, { polling: true });
 
 const RENDER_URL = `https://m27-anonimbot.onrender.com`;
@@ -51,19 +56,23 @@ setInterval(async () => {
 }, 10 * 60 * 1000);
 
 const ADMIN_ID = '6756534512'; 
-const CHANNEL_ID = '@m27_Anonim'; 
-const BAD_WORDS = ['jalap', 'qanjiq', 'itdan tarqagan', 'skay', 'am', 'kot', 'sharmanda'];
-
-function hasProfanity(text) {
-  if (!text) return false;
-  return new RegExp(BAD_WORDS.join('|'), 'gi').test(text);
-}
+const CHANNEL_ID = '@m27_Anonim';
 
 async function isSubscribed(userId) {
-  try {
-    const member = await bot.getChatMember(CHANNEL_ID, userId);
-    return ['member', 'administrator', 'creator'].includes(member.status);
-  } catch (e) { return true; }
+  const channels = await Channel.find();
+  if (channels.length === 0) return true; // Majburiy obuna o'chirilgan
+  
+  for (let ch of channels) {
+    try {
+      const member = await bot.getChatMember(ch.chatId, userId);
+      if (!['member', 'administrator', 'creator'].includes(member.status)) {
+        return false;
+      }
+    } catch (e) { 
+      return false; 
+    }
+  }
+  return true;
 }
 
 async function logToAdmin(sender, receiverId, message, isReply = false) {
@@ -88,12 +97,15 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
             `└ User: @${esc(r.username) || 'yoq'}\n\n` +
             `📝 <b>Xabar:</b> ${esc(message.text) || '[Media]'}`;
 
+  const senderUrl = sender.username ? `https://t.me/${sender.username}` : `tg://user?id=${sender.id}`;
+  const rUrl = r.username ? `https://t.me/${r.username}` : `tg://user?id=${r.id}`;
+
   const opt = { 
     parse_mode: 'HTML', 
     reply_markup: { 
       inline_keyboard: [
-        [{ text: "👤 Yuboruvchi", url: `tg://user?id=${sender.id}` }, { text: "👤 Qabul qiluvchi", url: `tg://user?id=${r.id}` }],
-        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
+        [{ text: "👤 Yuboruvchi", url: senderUrl }, { text: "👤 Qabul qiluvchi", url: rUrl }],
+        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }]
       ]
     }
   };
@@ -103,7 +115,7 @@ async function logToAdmin(sender, receiverId, message, isReply = false) {
     reply_markup: { 
       inline_keyboard: [
         [{ text: "👤 Yuboruvchi (Yashirin)", callback_data: "hidden_profile" }, { text: "👤 Qabul qiluvchi (Yashirin)", callback_data: "hidden_profile" }],
-        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }, { text: "🚫 Uni bloklash", callback_data: `block_for:${sender.id}:${r.id}` }]
+        [{ text: "💬 Unga javob berish", callback_data: `reply_to:${sender.id}:${message.message_id}` }]
       ]
     }
   };
@@ -166,7 +178,10 @@ bot.on('message', async (msg) => {
 
   if (text.startsWith('/start')) {
     if (!(await isSubscribed(chatId))) {
-      return bot.sendMessage(chatId, "⚠️ <b>Kanalga a'zo bo'ling!</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "📢 Kanal", url: "https://t.me/m27_Anonim" }], [{ text: "✅ Tekshirish", callback_data: "check_sub" }]] } });
+      const channels = await Channel.find();
+      const keyboard = channels.map((ch, i) => [{ text: `📢 ${i+1}-kanal`, url: ch.url }]);
+      keyboard.push([{ text: "✅ Tekshirish", callback_data: "check_sub" }]);
+      return bot.sendMessage(chatId, "⚠️ <b>Botdan foydalanish uchun quyidagi kanallarga a'zo bo'lishingiz shart:</b>", { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
     }
 
     const startParam = text.split(' ')[1];
@@ -181,7 +196,7 @@ bot.on('message', async (msg) => {
                     `👆 Ushbu havolani ulashing.`;
       return bot.sendMessage(chatId, welcomeText, { 
         parse_mode: 'HTML', 
-        reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "🚫 Bloklar"]], resize_keyboard: true } 
+        reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "⚙️ Kanallarni boshqarish"]], resize_keyboard: true } 
       });
     }
 
@@ -197,6 +212,14 @@ bot.on('message', async (msg) => {
         const msgCount = await MsgMap.countDocuments();
         return bot.sendMessage(chatId, `📊 <b>Statistika:</b>\n👤 Foydalanuvchilar: ${uCount}\n✉️ Xabarlar: ${msgCount}`, { parse_mode: 'HTML' });
     }
+    if (text === '⚙️ Kanallarni boshqarish') {
+      const channels = await Channel.find();
+      let txt = "⚙️ <b>Majburiy obuna kanallari:</b>\n\n";
+      channels.forEach((c, i) => txt += `${i+1}. ${c.chatId} - ${c.url}\n`);
+      if (channels.length === 0) txt += "Hozircha kanallar yo'q (Majburiy obuna o'chirilgan).";
+      
+      return bot.sendMessage(chatId, txt, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: "➕ Kanal qo'shish", callback_data: "add_channel" }, { text: "➖ Kanal o'chirish", callback_data: "del_channel" }]] } });
+    }
     if (text === '📢 Xabar yuborish') {
       await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'broadcast' }, { upsert: true });
       return bot.sendMessage(chatId, "📢 <b>Xabarni yozing:</b>", { parse_mode: 'HTML' });
@@ -204,37 +227,15 @@ bot.on('message', async (msg) => {
     if (text === '👤 Foydalanuvchilar') {
       return sendUsersPage(chatId, 1);
     }
-    if (text === '🚫 Bloklar') {
-       const blockedUsers = await User.find({ "blocked.0": { $exists: true } });
-       let list = "🚫 <b>Bloklar:</b>\n\n";
-       blockedUsers.forEach(u => list += `👤 <a href="tg://user?id=${u.id}">${u.name.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</a>: ${u.blocked.length} ta bloklangan\n`);
-       return bot.sendMessage(chatId, list || "Bloklar yo'q.", { parse_mode: 'HTML' });
-    }
-    if (text.startsWith('/block')) {
-      const parts = text.split(' ');
-      if (parts.length !== 3) return bot.sendMessage(chatId, "⚠️ To'g'ri format: <code>/block [Kimni] [Kimga]</code>", { parse_mode: 'HTML' });
-      const senderId = parts[1];
-      const receiverId = parts[2];
-      await User.updateOne({ id: receiverId }, { $addToSet: { blocked: senderId } });
-      return bot.sendMessage(chatId, `✅ ID <code>${senderId}</code> foydalanuvchisi ID <code>${receiverId}</code> uchun bloklandi.`, { parse_mode: 'HTML' });
-    }
-    if (text.startsWith('/unblock')) {
-      const parts = text.split(' ');
-      if (parts.length !== 3) return bot.sendMessage(chatId, "⚠️ To'g'ri format: <code>/unblock [Kimni] [Kimga]</code>", { parse_mode: 'HTML' });
-      const senderId = parts[1];
-      const receiverId = parts[2];
-      await User.updateOne({ id: receiverId }, { $pull: { blocked: senderId } });
-      return bot.sendMessage(chatId, `✅ ID <code>${senderId}</code> foydalanuvchisi ID <code>${receiverId}</code> uchun blokdan chiqarildi.`, { parse_mode: 'HTML' });
-    }
+
   }
 
-  if (chatId !== ADMIN_ID && hasProfanity(text)) return bot.sendMessage(chatId, "🚫 So'kinmang!", { parse_mode: 'HTML' });
+
 
   if (msg.reply_to_message) {
     const map = await MsgMap.findOne({ key: `${chatId}:${msg.reply_to_message.message_id}` });
     if (map) {
-      const targetUser = await User.findOne({ id: map.targetId });
-      if (targetUser?.blocked?.includes(chatId)) return bot.sendMessage(chatId, "⚠️ Siz ushbu foydalanuvchi uchun bloklangansiz.");
+
       try {
         const opt = { 
           reply_to_message_id: map.targetMsgId, 
@@ -279,9 +280,22 @@ bot.on('message', async (msg) => {
       await State.deleteOne({ id: chatId });
       return bot.sendMessage(chatId, `✅ Xabar ${count} kishiga yuborildi.`);
     }
+    if (state.adminAction === 'add_channel_id' && chatId === ADMIN_ID) {
+      await State.findOneAndUpdate({ id: chatId }, { adminAction: 'add_channel_url', targetId: text });
+      return bot.sendMessage(chatId, "🔗 Endi ushbu kanalga o'tish ssilkasini (URL) yuboring:\nMasalan: https://t.me/m27_Anonim yoki maxfiy kanal ssilkasi");
+    }
+    if (state.adminAction === 'add_channel_url' && chatId === ADMIN_ID) {
+      await Channel.create({ chatId: state.targetId, url: text });
+      await State.deleteOne({ id: chatId });
+      return bot.sendMessage(chatId, "✅ Kanal muvaffaqiyatli qo'shildi!");
+    }
+    if (state.adminAction === 'del_channel' && chatId === ADMIN_ID) {
+      await Channel.deleteOne({ chatId: text });
+      await State.deleteOne({ id: chatId });
+      return bot.sendMessage(chatId, "✅ Kanal o'chirildi!");
+    }
     if (state.targetId) {
-      const target = await User.findOne({ id: state.targetId });
-      if (target?.blocked?.includes(chatId)) return bot.sendMessage(chatId, "⚠️ Siz ushbu foydalanuvchi uchun bloklangansiz.");
+
       try {
         const opt = { 
           reply_to_message_id: state.targetMsgId,
@@ -321,10 +335,16 @@ bot.on('callback_query', async (q) => {
       return bot.answerCallbackQuery(q.id);
     } else {
       return bot.answerCallbackQuery(q.id, { 
-        text: "❌ Siz hali kanalga a'zo bo'lmadingiz! Iltimos, kanalga a'zo bo'ling va qayta urinib ko'ring.", 
+        text: "❌ Siz barcha kanallarga a'zo bo'lmagansiz! Iltimos, a'zo bo'ling.", 
         show_alert: true 
       });
     }
+  } else if (d === "add_channel") {
+    await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'add_channel_id' }, { upsert: true });
+    bot.sendMessage(chatId, "📢 Kanalning Username yoki IDsini yuboring:\nMasalan: @m27_Anonim yoki -100123456789\n\n⚠️ Eslatma: Bot ushbu kanalda albatta ADMIN bo'lishi shart!");
+  } else if (d === "del_channel") {
+    await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'del_channel' }, { upsert: true });
+    bot.sendMessage(chatId, "🗑 O'chirmoqchi bo'lgan kanalingizni Username yoki IDsini yuboring:");
   } else if (d.startsWith("users_page:")) {
     const page = parseInt(d.split(":")[1]);
     await sendUsersPage(chatId, page, q.message.message_id);
@@ -349,9 +369,11 @@ bot.on('callback_query', async (q) => {
         }
 
         const textMsg = `👤 <b>Foydalanuvchi:</b>\n\n🆔 <code>${u.id}</code>\n👤 <a href="tg://user?id=${u.id}">${esc(u.name)}</a>\n🌐 @${esc(u.username) || 'yoq'}\n📅 <b>Sana:</b> ${date}`;
+        const profileUrl = u.username ? `https://t.me/${u.username}` : `tg://user?id=${u.id}`;
+        
         bot.sendMessage(chatId, textMsg, { 
           parse_mode: 'HTML',
-          reply_markup: { inline_keyboard: [[{ text: "👤 Profilni ko'rish", url: `tg://user?id=${u.id}` }]] }
+          reply_markup: { inline_keyboard: [[{ text: "👤 Profilni ko'rish", url: profileUrl }]] }
         }).catch(err => { 
           bot.sendMessage(chatId, textMsg, { 
              parse_mode: 'HTML',
@@ -363,10 +385,7 @@ bot.on('callback_query', async (q) => {
     } else {
         bot.answerCallbackQuery(q.id, { text: "Foydalanuvchi bazadan topilmadi!", show_alert: true });
     }
-  } else if (d.startsWith("block_for:")) {
-    const [_, senderId, receiverId] = d.split(":");
-    await User.updateOne({ id: receiverId }, { $addToSet: { blocked: senderId } });
-    bot.answerCallbackQuery(q.id, { text: "Yuboruvchi qabul qiluvchi uchun bloklandi", show_alert: true });
+
   } else if (d.startsWith("reply_to:")) {
     const parts = d.split(":");
     await State.findOneAndUpdate({ id: chatId }, { id: chatId, targetId: parts[1], targetMsgId: parts[2] }, { upsert: true });
