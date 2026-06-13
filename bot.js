@@ -38,9 +38,17 @@ const StateSchema = new mongoose.Schema({
   id: { type: String, unique: true },
   targetId: String,
   targetMsgId: String,
-  adminAction: String
+  adminAction: String,
+  tempBlockedId: String
 });
 const State = mongoose.model('State', StateSchema);
+
+const BlockSchema = new mongoose.Schema({
+  blocked: String,
+  blocker: String,
+  blockedAt: { type: Date, default: Date.now }
+});
+const Block = mongoose.model('Block', BlockSchema);
 
 const ChannelSchema = new mongoose.Schema({
   chatId: String,
@@ -166,6 +174,40 @@ async function sendUsersPage(chatId, page, messageId = null) {
   }
 }
 
+async function sendBlocksPage(chatId, page, messageId = null) {
+  const limit = 20; // 20 records per page so it fits nicely
+  const skip = (page - 1) * limit;
+  const blocks = await Block.find().sort({ blockedAt: -1 }).skip(skip).limit(limit);
+  const totalBlocks = await Block.countDocuments();
+  const totalPages = Math.ceil(totalBlocks / limit) || 1;
+  
+  if (blocks.length === 0 && page === 1) return bot.sendMessage(chatId, "📭 <b>Bloklanganlar yo'q.</b>", { parse_mode: 'HTML' });
+  
+  let textMsg = `📋 <b>Bloklanganlar ro'yxati (${totalBlocks} ta):</b>\nSahifa: ${page} / ${totalPages}\n\n`;
+  blocks.forEach((b, i) => {
+    let date = "Noma'lum";
+    if (b.blockedAt) {
+      try {
+        date = new Date(b.blockedAt).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }).replace(',', '');
+      } catch(e) {}
+    }
+    textMsg += `${skip + i + 1}. 🔒 Yuboruvchi: <code>${b.blocked}</code>\n   └ 🛡 Qabul qiluvchi: <code>${b.blocker}</code>\n   └ 📅 ${date}\n\n`;
+  });
+
+  const controls = [];
+  if (page > 1) controls.push({ text: "⬅️ Oldingi", callback_data: `blocks_page:${page - 1}` });
+  controls.push({ text: `📄 ${page}/${totalPages}`, callback_data: "ignore" });
+  if (page < totalPages) controls.push({ text: "Keyingi ➡️", callback_data: `blocks_page:${page + 1}` });
+  
+  const opt = { parse_mode: 'HTML', reply_markup: { inline_keyboard: [controls] } };
+  
+  if (messageId) {
+    return bot.editMessageText(textMsg, { chat_id: chatId, message_id: messageId, ...opt }).catch(()=>{});
+  } else {
+    return bot.sendMessage(chatId, textMsg, opt);
+  }
+}
+
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id.toString();
   const text = msg.text || msg.caption || '';
@@ -196,7 +238,7 @@ bot.on('message', async (msg) => {
                     `👆 Ushbu havolani ulashing.`;
       return bot.sendMessage(chatId, welcomeText, { 
         parse_mode: 'HTML', 
-        reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "⚙️ Kanallarni boshqarish"]], resize_keyboard: true } 
+        reply_markup: { keyboard: [["📊 Statistika", "📢 Xabar yuborish"], ["👤 Foydalanuvchilar", "⚙️ Kanallarni boshqarish"], ["🚫 Bloklash"]], resize_keyboard: true } 
       });
     }
 
@@ -227,6 +269,17 @@ bot.on('message', async (msg) => {
     if (text === '👤 Foydalanuvchilar') {
       return sendUsersPage(chatId, 1);
     }
+    if (text === '🚫 Bloklash') {
+      return bot.sendMessage(chatId, "🚫 <b>Bloklash tizimi:</b>\n\nQaysi amalni bajaramiz?", { 
+        parse_mode: 'HTML', 
+        reply_markup: { 
+          inline_keyboard: [
+            [{ text: "🔒 Bloklash", callback_data: "admin_block" }, { text: "🔓 Blokdan ochish", callback_data: "admin_unblock" }],
+            [{ text: "📋 Bloklanganlar ro'yxati", callback_data: "admin_block_list" }]
+          ] 
+        } 
+      });
+    }
 
   }
 
@@ -235,6 +288,8 @@ bot.on('message', async (msg) => {
   if (msg.reply_to_message) {
     const map = await MsgMap.findOne({ key: `${chatId}:${msg.reply_to_message.message_id}` });
     if (map) {
+      const isBlocked = await Block.findOne({ blocked: chatId, blocker: map.targetId });
+      if (isBlocked) return bot.sendMessage(chatId, "❌ Kechirasiz, siz ushbu foydalanuvchiga xabar yubora olmaysiz.");
 
       try {
         const opt = { 
@@ -294,7 +349,30 @@ bot.on('message', async (msg) => {
       await State.deleteOne({ id: chatId });
       return bot.sendMessage(chatId, "✅ Kanal o'chirildi!");
     }
+    if (state.adminAction === 'block_step1' && chatId === ADMIN_ID) {
+      await State.findOneAndUpdate({ id: chatId }, { adminAction: 'block_step2', tempBlockedId: text });
+      return bot.sendMessage(chatId, "🔒 <b>Kimdan bloklaymiz?</b> (Qabul qiluvchi ID sini yozing):", { parse_mode: 'HTML' });
+    }
+    if (state.adminAction === 'block_step2' && chatId === ADMIN_ID) {
+      await Block.findOneAndUpdate({ blocked: state.tempBlockedId, blocker: text }, { blocked: state.tempBlockedId, blocker: text }, { upsert: true });
+      await State.deleteOne({ id: chatId });
+      return bot.sendMessage(chatId, `✅ <b>${state.tempBlockedId}</b> endi <b>${text}</b> ga xabar yoza olmaydi!`, { parse_mode: 'HTML' });
+    }
+    if (state.adminAction === 'unblock_step1' && chatId === ADMIN_ID) {
+      await State.findOneAndUpdate({ id: chatId }, { adminAction: 'unblock_step2', tempBlockedId: text });
+      return bot.sendMessage(chatId, "🔓 <b>Kimdan blokdan ochamiz?</b> (Qabul qiluvchi ID sini yozing):", { parse_mode: 'HTML' });
+    }
+    if (state.adminAction === 'unblock_step2' && chatId === ADMIN_ID) {
+      await Block.deleteOne({ blocked: state.tempBlockedId, blocker: text });
+      await State.deleteOne({ id: chatId });
+      return bot.sendMessage(chatId, `✅ <b>${state.tempBlockedId}</b> endi <b>${text}</b> ga yana xabar yoza oladi!`, { parse_mode: 'HTML' });
+    }
     if (state.targetId) {
+      const isBlocked = await Block.findOne({ blocked: chatId, blocker: state.targetId });
+      if (isBlocked) {
+        await State.deleteOne({ id: chatId });
+        return bot.sendMessage(chatId, "❌ Kechirasiz, siz ushbu foydalanuvchiga xabar yubora olmaysiz.");
+      }
 
       try {
         const opt = { 
@@ -345,9 +423,20 @@ bot.on('callback_query', async (q) => {
   } else if (d === "del_channel") {
     await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'del_channel' }, { upsert: true });
     bot.sendMessage(chatId, "🗑 O'chirmoqchi bo'lgan kanalingizni Username yoki IDsini yuboring:");
+  } else if (d === "admin_block") {
+    await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'block_step1' }, { upsert: true });
+    bot.sendMessage(chatId, "🔒 <b>Kimni bloklaymiz?</b> (Yuboruvchi ID sini yozing):", { parse_mode: 'HTML' });
+  } else if (d === "admin_unblock") {
+    await State.findOneAndUpdate({ id: chatId }, { id: chatId, adminAction: 'unblock_step1' }, { upsert: true });
+    bot.sendMessage(chatId, "🔓 <b>Kimni blokdan ochamiz?</b> (Yuboruvchi ID sini yozing):", { parse_mode: 'HTML' });
+  } else if (d === "admin_block_list") {
+    return sendBlocksPage(chatId, 1);
   } else if (d.startsWith("users_page:")) {
     const page = parseInt(d.split(":")[1]);
     await sendUsersPage(chatId, page, q.message.message_id);
+  } else if (d.startsWith("blocks_page:")) {
+    const page = parseInt(d.split(":")[1]);
+    await sendBlocksPage(chatId, page, q.message.message_id);
   } else if (d === "ignore") {
     // Hech narsa qilmaydi
   } else if (d === "hidden_profile") {
